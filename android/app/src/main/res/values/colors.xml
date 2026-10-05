@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Botanical Forest Green Theme Tokens for App Launcher Icon -->
+    <color name="ic_launcher_background">#1E523A</color>
+    <color name="ic_launcher_leaf">#86D5A9</color>
+    <color name="ic_launcher_leaf_light">#CEECC8</color>
+    <color name="ic_launcher_stroke">#FBF9F4</color>
+</resources>
