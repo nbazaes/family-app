@@ -3,7 +3,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.database import engine, Base
-from app.api import auth, families, items, calendar, events
+from app.models import family, item, event, finance as _finance_model
+from app.api import auth, families, items, calendar, events, finance
 
 
 @asynccontextmanager
@@ -23,7 +24,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
-    version="1.0.0",
+    version="0.2.0",
     description="Backend asíncrono para FamilyApp con SQLite WAL, SSE en vivo y exportación iCalendar RFC 5545",
     lifespan=lifespan,
 )
@@ -43,6 +44,7 @@ app.include_router(families.router, prefix=settings.API_V1_STR)
 app.include_router(items.router, prefix=settings.API_V1_STR)
 app.include_router(calendar.router, prefix=settings.API_V1_STR)
 app.include_router(events.router, prefix=settings.API_V1_STR)
+app.include_router(finance.router, prefix=settings.API_V1_STR)
 
 
 @app.get("/")
@@ -51,7 +53,7 @@ async def root():
         "app": settings.PROJECT_NAME,
         "status": "online",
         "docs": "/docs",
-        "version": "1.0.0",
+        "version": "0.2.0",
     }
 
 

@@ -31,6 +31,7 @@ Solución open source y self-hosted con arquitectura estricta Offline-First y ze
   1. *Listas de Compras Compartidas:* agrupación por categorías, tachado optimista inmediato y sincronización reactiva.
   2. *Tareas Familiares:* asignación por miembros (`assigned_to`), fechas de vencimiento y seguimiento pendientes/completadas.
   3. *Calendario Familiar:* agenda semanal/mensual, eventos de día completo o por horas, y suscripción iCal RFC 5545 (`.ics`).
+  4. *Finanzas Familiares:* registro de gastos por categorías con fechas, gestión de diferentes cuentas con saldo inicial y cálculo de saldos individuales y balance general.
 - **Sincronización:** Patrón Outbox con Room DB local (`sync_status = 'PENDING_MUTATION'`), WorkManager en segundo plano y canal SSE en vivo para difusión instantánea.
 - **Cero Fricción:** Configuración con solo URL del servidor y nombre de usuario.
 

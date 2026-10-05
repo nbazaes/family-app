@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.familyapp.core.database.entity.ItemEntity
 import com.familyapp.core.database.entity.SyncStatus
+import com.familyapp.ui.components.ModalImeBackHandler
 import com.familyapp.ui.theme.SyncOrange
 import kotlinx.coroutines.launch
 
@@ -466,10 +467,13 @@ fun AddShoppingItemBottomSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
+        properties = ModalBottomSheetProperties(shouldDismissOnBackPress = false),
         shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
         containerColor = MaterialTheme.colorScheme.surface,
         dragHandle = { BottomSheetDefaults.DragHandle() }
     ) {
+        ModalImeBackHandler(onDismiss = onDismiss)
+
         Column(
             modifier = Modifier
                 .fillMaxWidth()

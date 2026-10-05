@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import com.familyapp.ui.components.ModalImeBackHandler
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -748,10 +749,13 @@ fun AddTaskBottomSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
+        properties = ModalBottomSheetProperties(shouldDismissOnBackPress = false),
         shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
         containerColor = MaterialTheme.colorScheme.surface,
         dragHandle = { BottomSheetDefaults.DragHandle() }
     ) {
+        ModalImeBackHandler(onDismiss = onDismiss)
+
         Column(
             modifier = Modifier
                 .fillMaxWidth()

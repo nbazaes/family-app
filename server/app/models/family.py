@@ -20,6 +20,8 @@ class Family(Base):
     users = relationship("User", back_populates="family", cascade="all, delete-orphan")
     items = relationship("Item", back_populates="family", cascade="all, delete-orphan")
     events = relationship("CalendarEvent", back_populates="family", cascade="all, delete-orphan")
+    accounts = relationship("Account", back_populates="family", cascade="all, delete-orphan")
+    transactions = relationship("FinanceTransaction", back_populates="family", cascade="all, delete-orphan")
 
 
 class User(Base):

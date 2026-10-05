@@ -4,8 +4,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_
 from app.models.item import Item
 from app.models.event import CalendarEvent
+from app.models.finance import Account, FinanceTransaction
 from app.schemas.item import ItemSyncPayload, ItemOut
 from app.schemas.event import CalendarEventSyncPayload, CalendarEventOut
+from app.schemas.finance import AccountSyncPayload, FinanceTransactionSyncPayload
 from app.core.sse import sse_hub
 
 
@@ -193,3 +195,163 @@ class SyncService:
         server_events = list(server_events_res.scalars().all())
 
         return synced_ids, server_events
+
+    @staticmethod
+    async def sync_accounts(
+        db: AsyncSession,
+        family_id: str,
+        incoming_accounts: List[AccountSyncPayload],
+        since: Optional[datetime] = None,
+    ) -> Tuple[List[str], List[Account]]:
+        synced_ids = []
+
+        for acc_data in incoming_accounts:
+            client_updated_at = ensure_tz_aware(acc_data.updated_at)
+
+            stmt = select(Account).where(
+                and_(Account.id == acc_data.id, Account.family_id == family_id)
+            )
+            res = await db.execute(stmt)
+            existing: Optional[Account] = res.scalar_one_or_none()
+
+            if existing is None:
+                new_acc = Account(
+                    id=acc_data.id,
+                    family_id=family_id,
+                    name=acc_data.name,
+                    initial_balance=acc_data.initial_balance,
+                    color_hex=acc_data.color_hex,
+                    created_at=acc_data.created_at,
+                    updated_at=acc_data.updated_at,
+                    deleted_at=acc_data.deleted_at,
+                )
+                db.add(new_acc)
+                synced_ids.append(acc_data.id)
+                await sse_hub.broadcast(
+                    family_id,
+                    "account_created",
+                    {
+                        "id": new_acc.id,
+                        "name": new_acc.name,
+                        "updated_at": new_acc.updated_at.isoformat(),
+                    },
+                )
+            else:
+                server_updated_at = ensure_tz_aware(existing.updated_at)
+                if client_updated_at >= server_updated_at:
+                    existing.name = acc_data.name
+                    existing.initial_balance = acc_data.initial_balance
+                    existing.color_hex = acc_data.color_hex
+                    existing.updated_at = acc_data.updated_at
+                    existing.deleted_at = acc_data.deleted_at
+                    synced_ids.append(acc_data.id)
+                    await sse_hub.broadcast(
+                        family_id,
+                        "account_updated" if not acc_data.deleted_at else "account_deleted",
+                        {
+                            "id": existing.id,
+                            "name": existing.name,
+                            "updated_at": existing.updated_at.isoformat(),
+                        },
+                    )
+                else:
+                    synced_ids.append(acc_data.id)
+
+        await db.commit()
+
+        query = select(Account).where(Account.family_id == family_id)
+        if since is not None:
+            since_aware = ensure_tz_aware(since)
+            query = query.where(Account.updated_at > since_aware)
+
+        query = query.order_by(Account.updated_at.asc())
+        server_accounts_res = await db.execute(query)
+        server_accounts = list(server_accounts_res.scalars().all())
+
+        return synced_ids, server_accounts
+
+    @staticmethod
+    async def sync_finance_transactions(
+        db: AsyncSession,
+        family_id: str,
+        incoming_transactions: List[FinanceTransactionSyncPayload],
+        since: Optional[datetime] = None,
+    ) -> Tuple[List[str], List[FinanceTransaction]]:
+        synced_ids = []
+
+        for tx_data in incoming_transactions:
+            client_updated_at = ensure_tz_aware(tx_data.updated_at)
+
+            stmt = select(FinanceTransaction).where(
+                and_(FinanceTransaction.id == tx_data.id, FinanceTransaction.family_id == family_id)
+            )
+            res = await db.execute(stmt)
+            existing: Optional[FinanceTransaction] = res.scalar_one_or_none()
+
+            if existing is None:
+                new_tx = FinanceTransaction(
+                    id=tx_data.id,
+                    family_id=family_id,
+                    account_id=tx_data.account_id,
+                    amount=tx_data.amount,
+                    category=tx_data.category,
+                    description=tx_data.description,
+                    date=tx_data.date,
+                    type=tx_data.type,
+                    created_by=tx_data.created_by,
+                    created_at=tx_data.created_at,
+                    updated_at=tx_data.updated_at,
+                    deleted_at=tx_data.deleted_at,
+                )
+                db.add(new_tx)
+                synced_ids.append(tx_data.id)
+                await sse_hub.broadcast(
+                    family_id,
+                    "finance_transaction_created",
+                    {
+                        "id": new_tx.id,
+                        "account_id": new_tx.account_id,
+                        "amount": new_tx.amount,
+                        "category": new_tx.category,
+                        "description": new_tx.description,
+                        "updated_at": new_tx.updated_at.isoformat(),
+                    },
+                )
+            else:
+                server_updated_at = ensure_tz_aware(existing.updated_at)
+                if client_updated_at >= server_updated_at:
+                    existing.account_id = tx_data.account_id
+                    existing.amount = tx_data.amount
+                    existing.category = tx_data.category
+                    existing.description = tx_data.description
+                    existing.date = tx_data.date
+                    existing.type = tx_data.type
+                    existing.created_by = tx_data.created_by
+                    existing.updated_at = tx_data.updated_at
+                    existing.deleted_at = tx_data.deleted_at
+                    synced_ids.append(tx_data.id)
+                    await sse_hub.broadcast(
+                        family_id,
+                        "finance_transaction_updated" if not tx_data.deleted_at else "finance_transaction_deleted",
+                        {
+                            "id": existing.id,
+                            "account_id": existing.account_id,
+                            "amount": existing.amount,
+                            "updated_at": existing.updated_at.isoformat(),
+                        },
+                    )
+                else:
+                    synced_ids.append(tx_data.id)
+
+        await db.commit()
+
+        query = select(FinanceTransaction).where(FinanceTransaction.family_id == family_id)
+        if since is not None:
+            since_aware = ensure_tz_aware(since)
+            query = query.where(FinanceTransaction.updated_at > since_aware)
+
+        query = query.order_by(FinanceTransaction.date.desc())
+        server_txs_res = await db.execute(query)
+        server_txs = list(server_txs_res.scalars().all())
+
+        return synced_ids, server_txs

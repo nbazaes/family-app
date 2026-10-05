@@ -5,19 +5,30 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
+import com.familyapp.core.database.dao.AccountDao
 import com.familyapp.core.database.dao.CalendarEventDao
+import com.familyapp.core.database.dao.FinanceTransactionDao
 import com.familyapp.core.database.dao.ItemDao
+import com.familyapp.core.database.entity.AccountEntity
 import com.familyapp.core.database.entity.CalendarEventEntity
+import com.familyapp.core.database.entity.FinanceTransactionEntity
 import com.familyapp.core.database.entity.ItemEntity
 
 @Database(
-    entities = [ItemEntity::class, CalendarEventEntity::class],
-    version = 1,
+    entities = [
+        ItemEntity::class,
+        CalendarEventEntity::class,
+        AccountEntity::class,
+        FinanceTransactionEntity::class
+    ],
+    version = 2,
     exportSchema = false
 )
 abstract class FamilyDatabase : RoomDatabase() {
     abstract fun itemDao(): ItemDao
     abstract fun calendarEventDao(): CalendarEventDao
+    abstract fun accountDao(): AccountDao
+    abstract fun financeTransactionDao(): FinanceTransactionDao
 
     companion object {
         @Volatile

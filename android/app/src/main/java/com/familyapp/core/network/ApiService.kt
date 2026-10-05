@@ -2,6 +2,8 @@ package com.familyapp.core.network
 
 import com.familyapp.core.network.dto.BatchSyncEventsRequestDto
 import com.familyapp.core.network.dto.BatchSyncEventsResponseDto
+import com.familyapp.core.network.dto.BatchSyncFinanceRequestDto
+import com.familyapp.core.network.dto.BatchSyncFinanceResponseDto
 import com.familyapp.core.network.dto.BatchSyncItemsRequestDto
 import com.familyapp.core.network.dto.BatchSyncItemsResponseDto
 import com.familyapp.core.network.dto.CalendarEventDto
@@ -91,4 +93,10 @@ interface ApiService {
     // Export .ics
     @GET("api/calendar/export.ics")
     suspend fun exportCalendar(): Response<ResponseBody>
+
+    // Finance (Accounts & Transactions)
+    @POST("api/finance/batch-sync")
+    suspend fun batchSyncFinance(
+        @Body payload: BatchSyncFinanceRequestDto
+    ): Response<BatchSyncFinanceResponseDto>
 }

@@ -7,9 +7,12 @@ import androidx.work.WorkerParameters
 import com.familyapp.core.database.FamilyDatabase
 import com.familyapp.core.database.entity.SyncStatus
 import com.familyapp.core.network.NetworkClient
+import com.familyapp.core.network.dto.AccountDto
 import com.familyapp.core.network.dto.BatchSyncEventsRequestDto
+import com.familyapp.core.network.dto.BatchSyncFinanceRequestDto
 import com.familyapp.core.network.dto.BatchSyncItemsRequestDto
 import com.familyapp.core.network.dto.CalendarEventDto
+import com.familyapp.core.network.dto.FinanceTransactionDto
 import com.familyapp.core.network.dto.ItemDto
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -83,6 +86,44 @@ class SyncWorker(
                 val errorBody = eventsResponse.errorBody()?.string()
                 Log.e("SyncWorker", "Events sync failed with HTTP ${eventsResponse.code()}: $errorBody")
                 if (eventsResponse.code() == 401) {
+                    return@withContext Result.failure()
+                }
+            }
+
+            // 3. Sync Finance (Accounts & Transactions) - Bidirectional
+            val pendingAccounts = db.accountDao().getPendingSyncAccounts()
+            val accountDtos = pendingAccounts.map { AccountDto.fromEntity(it) }
+            val pendingTxs = db.financeTransactionDao().getPendingSyncTransactions()
+            val txDtos = pendingTxs.map { FinanceTransactionDto.fromEntity(it) }
+            Log.d("SyncWorker", "Syncing finance: ${pendingAccounts.size} pending accounts, ${pendingTxs.size} pending transactions to upload")
+
+            val financeRequest = BatchSyncFinanceRequestDto(
+                accounts = accountDtos,
+                transactions = txDtos
+            )
+            val financeResponse = api.batchSyncFinance(financeRequest)
+
+            if (financeResponse.isSuccessful && financeResponse.body() != null) {
+                val body = financeResponse.body()!!
+                Log.d("SyncWorker", "Finance sync OK: ${body.syncedAccountIds.size} accounts & ${body.syncedTransactionIds.size} txs accepted by server")
+                if (body.syncedAccountIds.isNotEmpty()) {
+                    db.accountDao().updateSyncStatus(body.syncedAccountIds, SyncStatus.SYNCED)
+                }
+                if (body.serverAccounts.isNotEmpty()) {
+                    val serverAccEntities = body.serverAccounts.map { it.toEntity(familyId, SyncStatus.SYNCED) }
+                    db.accountDao().upsertAll(serverAccEntities)
+                }
+                if (body.syncedTransactionIds.isNotEmpty()) {
+                    db.financeTransactionDao().updateSyncStatus(body.syncedTransactionIds, SyncStatus.SYNCED)
+                }
+                if (body.serverTransactions.isNotEmpty()) {
+                    val serverTxEntities = body.serverTransactions.map { it.toEntity(familyId, SyncStatus.SYNCED) }
+                    db.financeTransactionDao().upsertAll(serverTxEntities)
+                }
+            } else {
+                val errorBody = financeResponse.errorBody()?.string()
+                Log.e("SyncWorker", "Finance sync failed with HTTP ${financeResponse.code()}: $errorBody")
+                if (financeResponse.code() == 401) {
                     return@withContext Result.failure()
                 }
             }

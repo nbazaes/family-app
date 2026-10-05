@@ -11,7 +11,9 @@ import androidx.work.WorkManager
 import com.familyapp.core.database.FamilyDatabase
 import com.familyapp.core.database.entity.SyncStatus
 import com.familyapp.core.network.NetworkClient
+import com.familyapp.core.network.dto.AccountDto
 import com.familyapp.core.network.dto.CalendarEventDto
+import com.familyapp.core.network.dto.FinanceTransactionDto
 import com.familyapp.core.network.dto.ItemDto
 import com.familyapp.core.network.sse.SseClient
 import com.google.gson.Gson
@@ -156,6 +158,50 @@ class SyncManager(private val context: Context) {
                                 }
                             } catch (e: Exception) {
                                 Log.e("SyncManager", "Error handling calendar event delete: ${e.message}")
+                            }
+                        }
+                        "account_created", "account_updated" -> {
+                            try {
+                                val accDto = gson.fromJson(sseEvent.data, AccountDto::class.java)
+                                if (accDto != null) {
+                                    db.accountDao().upsert(
+                                        accDto.toEntity(NetworkClient.currentFamilyId, SyncStatus.SYNCED)
+                                    )
+                                }
+                            } catch (e: Exception) {
+                                Log.e("SyncManager", "Error parsing SSE account: ${e.message}")
+                            }
+                        }
+                        "account_deleted" -> {
+                            try {
+                                val accDto = gson.fromJson(sseEvent.data, AccountDto::class.java)
+                                if (accDto?.id != null) {
+                                    db.accountDao().deletePermanently(accDto.id)
+                                }
+                            } catch (e: Exception) {
+                                Log.e("SyncManager", "Error handling account delete: ${e.message}")
+                            }
+                        }
+                        "finance_transaction_created", "finance_transaction_updated" -> {
+                            try {
+                                val txDto = gson.fromJson(sseEvent.data, FinanceTransactionDto::class.java)
+                                if (txDto != null) {
+                                    db.financeTransactionDao().upsert(
+                                        txDto.toEntity(NetworkClient.currentFamilyId, SyncStatus.SYNCED)
+                                    )
+                                }
+                            } catch (e: Exception) {
+                                Log.e("SyncManager", "Error parsing SSE finance transaction: ${e.message}")
+                            }
+                        }
+                        "finance_transaction_deleted" -> {
+                            try {
+                                val txDto = gson.fromJson(sseEvent.data, FinanceTransactionDto::class.java)
+                                if (txDto?.id != null) {
+                                    db.financeTransactionDao().deletePermanently(txDto.id)
+                                }
+                            } catch (e: Exception) {
+                                Log.e("SyncManager", "Error handling finance transaction delete: ${e.message}")
                             }
                         }
                     }

@@ -23,6 +23,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.DialogProperties
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -32,12 +33,16 @@ import com.familyapp.core.network.NetworkClient
 import com.familyapp.core.network.dto.LoginRequestDto
 import com.familyapp.core.network.dto.RegisterRequestDto
 import com.familyapp.data.repository.CalendarRepository
+import com.familyapp.data.repository.FinanceRepository
 import com.familyapp.data.repository.ShoppingRepository
 import com.familyapp.data.repository.TasksRepository
 import com.familyapp.sync.SyncManager
 import com.familyapp.ui.calendar.CalendarScreen
 import com.familyapp.ui.calendar.CalendarViewModel
+import com.familyapp.ui.components.ModalImeBackHandler
 import com.familyapp.ui.components.SyncBadge
+import com.familyapp.ui.finance.FinanceScreen
+import com.familyapp.ui.finance.FinanceViewModel
 import com.familyapp.ui.navigation.FamilyFloatingBottomBar
 import com.familyapp.ui.navigation.Screen
 import com.familyapp.ui.shopping.ShoppingScreen
@@ -66,6 +71,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var shoppingViewModel: ShoppingViewModel
     private lateinit var tasksViewModel: TasksViewModel
     private lateinit var calendarViewModel: CalendarViewModel
+    private lateinit var financeViewModel: FinanceViewModel
 
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -78,10 +84,12 @@ class MainActivity : ComponentActivity() {
         val shoppingRepo = ShoppingRepository(db.itemDao(), syncManager)
         val tasksRepo = TasksRepository(db.itemDao(), syncManager)
         val calendarRepo = CalendarRepository(db.calendarEventDao(), syncManager)
+        val financeRepo = FinanceRepository(db.accountDao(), db.financeTransactionDao(), syncManager)
 
         shoppingViewModel = ShoppingViewModel(shoppingRepo)
         tasksViewModel = TasksViewModel(tasksRepo)
         calendarViewModel = CalendarViewModel(calendarRepo)
+        financeViewModel = FinanceViewModel(financeRepo)
 
         setContent {
             val themeMode by ThemePreferences.themeMode.collectAsState()
@@ -145,6 +153,9 @@ class MainActivity : ComponentActivity() {
                         composable(Screen.Calendar.route) {
                             CalendarScreen(viewModel = calendarViewModel)
                         }
+                        composable(Screen.Finance.route) {
+                            FinanceScreen(viewModel = financeViewModel)
+                        }
                     }
 
                     if (showServerConfigDialog) {
@@ -200,6 +211,7 @@ fun ServerConfigDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
+        properties = DialogProperties(dismissOnBackPress = false),
         title = {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -223,6 +235,7 @@ fun ServerConfigDialog(
             }
         },
         text = {
+            ModalImeBackHandler(onDismiss = onDismiss)
             Column(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(10.dp)

@@ -12,9 +12,11 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ShoppingCart
+import androidx.compose.material.icons.outlined.AccountBalanceWallet
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.ShoppingCart
@@ -44,12 +46,14 @@ sealed class Screen(
     object Shopping : Screen("shopping", "Compras", Icons.Filled.ShoppingCart, Icons.Outlined.ShoppingCart)
     object Tasks : Screen("tasks", "Tareas", Icons.Filled.CheckCircle, Icons.Outlined.CheckCircle)
     object Calendar : Screen("calendar", "Calendario", Icons.Filled.CalendarMonth, Icons.Outlined.CalendarMonth)
+    object Finance : Screen("finance", "Finanzas", Icons.Filled.AccountBalanceWallet, Icons.Outlined.AccountBalanceWallet)
 }
 
 val bottomNavItems = listOf(
     Screen.Shopping,
     Screen.Tasks,
-    Screen.Calendar
+    Screen.Calendar,
+    Screen.Finance
 )
 
 /**

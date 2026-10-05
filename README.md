@@ -34,6 +34,7 @@ FamilyApp cuenta con un sistema de diseño propio alejado de los estándares fr�
 1. **Listas de Compras Compartidas:** Agrupación por categorías, tachado optimista y sincronización instantánea entre familiares.
 2. **Tareas Familiares:** Asignación por miembros (`assigned_to`), filtros rápidos, fechas de vencimiento y seguimiento de pendientes vs completadas.
 3. **Calendario Familiar Sincronizado:** Agenda semanal/mensual, eventos de día completo o por horas, y **feed dinámico RFC 5545 (`.ics`)** para suscribirse desde Google Calendar, Apple Calendar o Thunderbird.
+4. **Finanzas Familiares:** Registro de gastos por categorías con fechas, gestión de diferentes cuentas (Efectivo, Banco, Ahorros, etc.) y cálculo en tiempo real de saldos individuales y balance general consolidado del hogar.
 
 ---
 
