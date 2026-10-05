@@ -1,13 +1,38 @@
-# FamilyApp (MVP Open Source & Self-Hosted)
+# FamilyApp 🌿
 
-Alternativa autoalojable y ligera a FamilyWall construida con arquitectura estricta **Offline-First** y sincronización reactiva en tiempo real.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Android](https://img.shields.io/badge/Android-8.0%2B%20(API%2026%2B)-green.svg)](https://developer.android.com)
+[![FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688.svg)](https://fastapi.tiangolo.com)
+[![Jetpack Compose](https://img.shields.io/badge/UI-Jetpack%20Compose%20M3-4285F4.svg)](https://developer.android.com/jetpack/compose)
+
+Alternativa moderna, autoalojable y ligera a FamilyWall construida con arquitectura estricta **Offline-First**, diseño cálido botánico y sincronización reactiva en tiempo real.
+
+---
+
+## 📥 Descarga e Instalación
+
+Puedes descargar el archivo `.apk` listo para instalar directamente desde los **[Releases de GitHub](https://github.com/nbazaes/family-app/releases)**.
+
+1. Descarga el archivo `FamilyApp-vX.X.X.apk` en tu teléfono Android.
+2. Abre el archivo descargado para instalarlo (habilita la opción de "Instalar desde fuentes desconocidas" si tu navegador te lo solicita).
+3. Abre la app e ingresa la URL de tu servidor local o Tailscale (ej: `http://192.168.1.130:8000/`) y tu nombre para sincronizar al instante.
+
+---
+
+## 🌿 Identidad Visual: «Herbario & Calidez Botánica»
+
+FamilyApp cuenta con un sistema de diseño propio alejado de los estándares fríos corporativos:
+- **Isotipo oficial «Casa con Hojas»:** Logotipo vectorial nativo que fusiona la calidez del hogar con brotes botánicos.
+- **Icono Adaptativo:** Compatible con todos los launchers de Android y soporte para iconos temáticos monocromáticos de **Material You** (Android 13+).
+- **Modo Claro / Oscuro manual:** Conmutador rápido de un toque en la cabecera y selector de 3 opciones (Auto / Claro ☀️ / Oscuro 🌙) persistente.
+- **Tipografía Commissioner:** Tipografía neogrotesca humanista integrada localmente para máxima legibilidad y funcionamiento 100% offline.
 
 ---
 
 ## 🌟 Módulos Incluidos
 
 1. **Listas de Compras Compartidas:** Agrupación por categorías, tachado optimista y sincronización instantánea entre familiares.
-2. **Tareas Familiares:** Asignación por miembros (`assigned_to`), fechas de vencimiento y seguimiento de pendientes vs completadas.
+2. **Tareas Familiares:** Asignación por miembros (`assigned_to`), filtros rápidos, fechas de vencimiento y seguimiento de pendientes vs completadas.
 3. **Calendario Familiar Sincronizado:** Agenda semanal/mensual, eventos de día completo o por horas, y **feed dinámico RFC 5545 (`.ics`)** para suscribirse desde Google Calendar, Apple Calendar o Thunderbird.
 
 ---
@@ -23,16 +48,16 @@ Alternativa autoalojable y ligera a FamilyWall construida con arquitectura estri
 - **Docker:** Empaquetado en un solo `Dockerfile` y `docker-compose.yml`.
 
 ### Frontend Android (`/android`)
-- **Jetpack Compose + Material 3:** Interfaz moderna y declarativa.
-- **Patrón Outbox Offline-First:** Las inserciones/ediciones impactan Room Database de inmediato con `sync_status = 'PENDING_MUTATION'`.
-- **WorkManager:** `SyncWorker` con restricción de red (`NetworkType.CONNECTED`) que procesa los lotes en segundo plano (`batch-sync`).
-- **SSE Listener Reactivo:** Corutina en primer plano que escucha eventos y actualiza la base de datos local en tiempo cero.
+- **Jetpack Compose + Material 3:** Interfaz moderna y declarativa con tokens botánicos.
+- **Patrón Outbox Offline-First:** Las mutaciones impactan Room Database de inmediato con `sync_status = 'PENDING_MUTATION'`.
+- **WorkManager:** `SyncWorker` con restricción de conectividad que procesa los lotes en segundo plano (`batch-sync`).
+- **SSE Listener Reactivo:** Conexión continua en primer plano para recibir cambios de otros familiares en tiempo real.
 
 ---
 
 ## 🚀 Despliegue del Backend
 
-### Opción 1: Con Docker Compose (Recomendado)
+### Con Docker Compose (Recomendado)
 
 ```bash
 cd server
@@ -42,7 +67,7 @@ El servidor quedará disponible en `http://localhost:8000`.
 - Documentación interactiva Swagger: `http://localhost:8000/docs`
 - Verificación de estado: `http://localhost:8000/api/health`
 
-### Opción 2: En Entorno Local Python
+### En Entorno Local Python
 
 ```bash
 cd server
@@ -52,24 +77,24 @@ pip install -r requirements.txt
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-### Ejecutar Pruebas Automatizadas del Backend
-
-```bash
-cd server
-pytest -v
-```
-
 ---
 
 ## 📱 Compilación del Cliente Android
 
-Abre la carpeta `android/` en **Android Studio** (Koala / Ladybug o superior) o usa la línea de comandos:
-
 ```bash
 cd android
-./gradlew assembleDebug
-```
 
-> **Nota:** Para conectar el emulador de Android al backend local en tu máquina, usa la IP `http://10.0.2.2:8000/`. Si pruebas en un dispositivo físico conectado a la misma red WiFi, configura la IP local de tu ordenador (ej: `http://192.168.1.100:8000/`) tocando el icono de configuración ⚙️ en la barra superior de la app.
-> 
-> **Conexión sin cuenta (Cero Fricción):** No es necesario crear usuarios ni contraseñas. Cada miembro de la familia solo ingresa la URL del servidor y su nombre (ej: "Papá", "Nicolás") y presiona **"Conectar y Sincronizar"** para comenzar a sincronizar al instante.
+# Compilar versión de depuración (Debug)
+./gradlew assembleDebug
+
+# Compilar versión de producción firmada (Release)
+./gradlew assembleRelease
+```
+El archivo APK firmado se generará en:
+`android/app/build/outputs/apk/release/app-release.apk`
+
+---
+
+## 📄 Licencia
+
+Este proyecto está bajo la Licencia **MIT**. Consulta el archivo [LICENSE](LICENSE) para más detalles.
