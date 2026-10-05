@@ -1,0 +1,19 @@
+services:
+  family-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: family-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=sqlite+aiosqlite:///./data/family.db
+      - SECRET_KEY=super-secret-family-encryption-key-replace-in-production
+      - CORS_ORIGINS=["*"]
+    volumes:
+      - family_data:/app/data
+
+volumes:
+  family_data:
+    driver: local

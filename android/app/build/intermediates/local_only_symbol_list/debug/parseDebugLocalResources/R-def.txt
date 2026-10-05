@@ -1,0 +1,10 @@
+R_DEF: Internal format may change without notice
+local
+font commissioner_regular
+string app_name
+string tab_calendar
+string tab_shopping
+string tab_tasks
+style Theme.FamilyApp
+xml backup_rules
+xml data_extraction_rules
