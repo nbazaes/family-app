@@ -18,6 +18,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -45,12 +46,18 @@ import com.familyapp.ui.tasks.TasksScreen
 import com.familyapp.ui.tasks.TasksViewModel
 import com.familyapp.ui.theme.FamilyAppTheme
 import com.familyapp.sync.SyncUiState
+import com.familyapp.core.AppThemeMode
+import com.familyapp.core.ThemePreferences
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.LightMode
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+
 
 
 class MainActivity : ComponentActivity() {
@@ -77,7 +84,15 @@ class MainActivity : ComponentActivity() {
         calendarViewModel = CalendarViewModel(calendarRepo)
 
         setContent {
-            FamilyAppTheme {
+            val themeMode by ThemePreferences.themeMode.collectAsState()
+            val isSystemDark = isSystemInDarkTheme()
+            val isDark = when (themeMode) {
+                AppThemeMode.SYSTEM -> isSystemDark
+                AppThemeMode.DARK -> true
+                AppThemeMode.LIGHT -> false
+            }
+
+            FamilyAppTheme(darkTheme = isDark) {
                 val navController = rememberNavController()
                 val navBackStackEntry by navController.currentBackStackEntryAsState()
                 val currentRoute = navBackStackEntry?.destination?.route ?: Screen.Shopping.route
@@ -96,6 +111,8 @@ class MainActivity : ComponentActivity() {
                             syncState = syncState,
                             isLoggedIn = NetworkClient.isLoggedIn(),
                             userName = NetworkClient.currentUserName,
+                            isDark = isDark,
+                            onToggleTheme = { ThemePreferences.toggleLightDark(isDark) },
                             onSyncClick = { syncManager.scheduleSync() },
                             onSettingsClick = { showServerConfigDialog = true }
                         )
@@ -183,7 +200,28 @@ fun ServerConfigDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (isLoggedIn) "Estado de la Conexión" else "Conectar con tu Familia") },
+        title = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    modifier = Modifier.size(28.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_family_logo),
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+                Text(if (isLoggedIn) "Estado de la Conexión" else "Conectar con tu Familia")
+            }
+        },
         text = {
             Column(
                 modifier = Modifier.fillMaxWidth(),
@@ -405,6 +443,47 @@ fun ServerConfigDialog(
                     }
                 }
 
+                HorizontalDivider(
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                    modifier = Modifier.padding(vertical = 4.dp)
+                )
+
+                val currentThemeMode by ThemePreferences.themeMode.collectAsState()
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = "Apariencia",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        FilterChip(
+                            selected = currentThemeMode == AppThemeMode.SYSTEM,
+                            onClick = { ThemePreferences.setThemeMode(AppThemeMode.SYSTEM) },
+                            label = { Text("Auto", fontSize = 11.sp) },
+                            modifier = Modifier.weight(1f)
+                        )
+                        FilterChip(
+                            selected = currentThemeMode == AppThemeMode.LIGHT,
+                            onClick = { ThemePreferences.setThemeMode(AppThemeMode.LIGHT) },
+                            label = { Text("Claro ☀️", fontSize = 11.sp) },
+                            modifier = Modifier.weight(1f)
+                        )
+                        FilterChip(
+                            selected = currentThemeMode == AppThemeMode.DARK,
+                            onClick = { ThemePreferences.setThemeMode(AppThemeMode.DARK) },
+                            label = { Text("Oscuro 🌙", fontSize = 11.sp) },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+
                 if (statusMessage != null) {
                     Text(
                         text = statusMessage!!,
@@ -430,6 +509,8 @@ fun FamilyTopHeader(
     syncState: SyncUiState,
     isLoggedIn: Boolean,
     userName: String?,
+    isDark: Boolean,
+    onToggleTheme: () -> Unit,
     onSyncClick: () -> Unit,
     onSettingsClick: () -> Unit,
     modifier: Modifier = Modifier
@@ -460,7 +541,12 @@ fun FamilyTopHeader(
                         modifier = Modifier.size(36.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
-                            Text("🌿", fontSize = 18.sp)
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_family_logo),
+                                contentDescription = "FamilyApp Logo",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(22.dp)
+                            )
                         }
                     }
                     Spacer(modifier = Modifier.width(10.dp))
@@ -501,6 +587,21 @@ fun FamilyTopHeader(
                                 )
                             }
                         )
+                    }
+
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                        modifier = Modifier.size(38.dp)
+                    ) {
+                        IconButton(onClick = onToggleTheme) {
+                            Icon(
+                                imageVector = if (isDark) Icons.Default.LightMode else Icons.Default.DarkMode,
+                                contentDescription = if (isDark) "Cambiar a modo claro" else "Cambiar a modo oscuro",
+                                modifier = Modifier.size(18.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
 
                     Surface(

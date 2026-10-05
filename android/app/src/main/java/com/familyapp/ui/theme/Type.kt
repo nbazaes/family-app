@@ -8,13 +8,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import com.familyapp.R
 
-// 🌿 Calm & Expressive Humanist Neo-Grotesque: Commissioner
+// 🌿 Calm & Expressive Humanist Neo-Grotesque: Commissioner (True Static Weights for Optimal Legibility)
 val CommissionerFamily = FontFamily(
     Font(R.font.commissioner_regular, FontWeight.Normal),
-    Font(R.font.commissioner_regular, FontWeight.Medium),
-    Font(R.font.commissioner_regular, FontWeight.SemiBold),
-    Font(R.font.commissioner_regular, FontWeight.Bold),
-    Font(R.font.commissioner_regular, FontWeight.ExtraBold)
+    Font(R.font.commissioner_medium, FontWeight.Medium),
+    Font(R.font.commissioner_semibold, FontWeight.SemiBold),
+    Font(R.font.commissioner_bold, FontWeight.Bold)
 )
 
 val Typography = Typography(
@@ -69,7 +68,7 @@ val Typography = Typography(
     ),
     bodySmall = TextStyle(
         fontFamily = CommissionerFamily,
-        fontWeight = FontWeight.Normal,
+        fontWeight = FontWeight.Medium,
         fontSize = 12.sp,
         lineHeight = 16.sp,
         letterSpacing = 0.3.sp
@@ -90,7 +89,7 @@ val Typography = Typography(
     ),
     labelSmall = TextStyle(
         fontFamily = CommissionerFamily,
-        fontWeight = FontWeight.Medium,
+        fontWeight = FontWeight.SemiBold,
         fontSize = 11.sp,
         lineHeight = 15.sp,
         letterSpacing = 0.4.sp

@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <string name="app_name">FamilyApp</string>
-    <string name="tab_calendar">Calendario</string>
-    <string name="tab_shopping">Compras</string>
-    <string name="tab_tasks">Tareas</string>
-    <style name="Theme.FamilyApp" parent="android:Theme.Material.Light.NoActionBar"/>
-</resources>

@@ -11,7 +11,10 @@ class FamilyApplication : Application() {
         Log.d("FamilyApplication", "Initializing FamilyApp...")
         // 1. Initialize NetworkClient with preferences
         NetworkClient.init(this)
-        // 2. Initialize and trigger SyncManager
+        // 2. Initialize ThemePreferences
+        com.familyapp.core.ThemePreferences.init(this)
+        // 3. Initialize and trigger SyncManager
         SyncManager.getInstance(this).scheduleSync()
     }
 }
+

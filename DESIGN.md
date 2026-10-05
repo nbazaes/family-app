@@ -117,6 +117,7 @@ components:
 
 ## Components
 
+- **Brand Mark Vectorial (`ic_family_logo`):** Isotipo exclusivo de FamilyApp: silueta minimalista de hogar cálido con brotes botánicos estilizados en su tejado, totalmente adaptable en tamaño y tintado tonal dinámico (Verde Bosque en claro, Salvia Luminoso en oscuro).
 - **SwipeableTaskRow:** Fila interactiva con `SwipeToDismissBox` de Material 3, soporte táctil háptico y `Snackbar` con acción "Deshacer".
 - **AddTaskBottomSheet:** Hoja inferior accesible con autoenfoque, selector de familiar en chips y presets de fecha ("Hoy", "Mañana", "Fin de semana").
 - **MemberFilterBar:** Filtros superiores de chip con contador de pendientes.
@@ -128,7 +129,8 @@ components:
 - Mantener siempre objetivos táctiles mínimos de **48×48 dp**.
 - Aplicar tokens semánticos del tema (`MaterialTheme.colorScheme.*`) en lugar de colores hexadecimales fijos.
 - Ofrecer retroalimentación háptica sutil en gestos y cambios de estado.
-- Soportar tema oscuro como un esquema de primer nivel con contraste balanceado.
+- Soportar tema oscuro como un esquema de primer nivel con contraste balanceado, permitiendo selección manual (Auto / Claro / Oscuro) con persistencia offline.
+- Proveer un botón de acceso rápido (1 toque) en la cabecera superior para alternar instantáneamente entre modo claro y oscuro.
 
 ### Don'ts
 - No utilizar colores fríos de neón o púrpuras genéricos que rompan la atmósfera cálida botánica.
