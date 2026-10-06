@@ -100,6 +100,30 @@ class FinanceRepository(
         return txId
     }
 
+    suspend fun updateTransaction(
+        tx: FinanceTransactionEntity,
+        accountId: String,
+        amount: Double,
+        category: String,
+        description: String,
+        date: String,
+        type: String = "EXPENSE"
+    ) {
+        val now = Instant.now().toString()
+        val updated = tx.copy(
+            accountId = accountId,
+            amount = amount,
+            category = category,
+            description = description,
+            date = date,
+            type = type,
+            updatedAt = now,
+            syncStatus = SyncStatus.PENDING_MUTATION
+        )
+        transactionDao.upsert(updated)
+        syncManager.scheduleSync()
+    }
+
     suspend fun deleteTransaction(tx: FinanceTransactionEntity) {
         val now = Instant.now().toString()
         transactionDao.markDeleted(tx.id, deletedAt = now, updatedAt = now)

@@ -134,10 +134,47 @@ class FinanceViewModel(
         }
     }
 
+    fun updateExpense(
+        tx: FinanceTransactionEntity,
+        accountId: String,
+        amount: Double,
+        category: String,
+        description: String,
+        date: String,
+        type: String = "EXPENSE"
+    ) {
+        viewModelScope.launch {
+            if (amount > 0 && accountId.isNotBlank()) {
+                repository.updateTransaction(
+                    tx = tx,
+                    accountId = accountId,
+                    amount = amount,
+                    category = category.ifBlank { "Otros" },
+                    description = description.trim().ifBlank { category },
+                    date = date,
+                    type = type
+                )
+            }
+        }
+    }
+
     fun addAccount(name: String, initialBalance: Double, colorHex: String) {
         viewModelScope.launch {
             if (name.isNotBlank()) {
                 repository.addAccount(
+                    name = name.trim(),
+                    initialBalance = initialBalance,
+                    colorHex = colorHex
+                )
+            }
+        }
+    }
+
+    fun updateAccount(account: AccountEntity, name: String, initialBalance: Double, colorHex: String) {
+        viewModelScope.launch {
+            if (name.isNotBlank()) {
+                repository.updateAccount(
+                    account = account,
                     name = name.trim(),
                     initialBalance = initialBalance,
                     colorHex = colorHex

@@ -302,6 +302,67 @@ async def create_transaction(
     return tx
 
 
+@router.put("/transactions/{transaction_id}", response_model=FinanceTransactionOut)
+async def update_transaction(
+    transaction_id: str,
+    payload: FinanceTransactionUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    stmt = select(FinanceTransaction).where(
+        and_(
+            FinanceTransaction.id == transaction_id,
+            FinanceTransaction.family_id == current_user.family_id,
+            FinanceTransaction.deleted_at.is_(None),
+        )
+    )
+    res = await db.execute(stmt)
+    tx = res.scalar_one_or_none()
+    if not tx:
+        raise HTTPException(status_code=404, detail="Transacción no encontrada")
+
+    if payload.account_id is not None:
+        acc_stmt = select(Account).where(
+            and_(
+                Account.id == payload.account_id,
+                Account.family_id == current_user.family_id,
+                Account.deleted_at.is_(None),
+            )
+        )
+        acc_res = await db.execute(acc_stmt)
+        if not acc_res.scalar_one_or_none():
+            raise HTTPException(status_code=404, detail="Cuenta seleccionada no existe")
+        tx.account_id = payload.account_id
+
+    if payload.amount is not None:
+        tx.amount = payload.amount
+    if payload.category is not None:
+        tx.category = payload.category
+    if payload.description is not None:
+        tx.description = payload.description
+    if payload.date is not None:
+        tx.date = payload.date
+    if payload.type is not None:
+        tx.type = payload.type
+    tx.updated_at = payload.updated_at or datetime.now(timezone.utc)
+
+    await db.commit()
+    await db.refresh(tx)
+
+    await sse_hub.broadcast(
+        current_user.family_id,
+        "finance_transaction_updated",
+        {
+            "id": tx.id,
+            "account_id": tx.account_id,
+            "amount": tx.amount,
+            "updated_at": tx.updated_at.isoformat(),
+        },
+    )
+
+    return tx
+
+
 @router.delete("/transactions/{transaction_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_transaction(
     transaction_id: str,

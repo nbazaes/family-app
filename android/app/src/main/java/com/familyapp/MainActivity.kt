@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material.icons.filled.NewReleases
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
@@ -62,6 +63,9 @@ import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.familyapp.core.update.UpdateManager
+import com.familyapp.core.update.UpdateUiState
+import com.familyapp.ui.update.UpdateBottomSheet
 
 
 
@@ -100,6 +104,13 @@ class MainActivity : ComponentActivity() {
                 AppThemeMode.LIGHT -> false
             }
 
+            val updateManager = remember { UpdateManager.getInstance(applicationContext) }
+            val updateState by updateManager.uiState.collectAsState()
+
+            LaunchedEffect(Unit) {
+                updateManager.checkForUpdates(isManual = false)
+            }
+
             FamilyAppTheme(darkTheme = isDark) {
                 val navController = rememberNavController()
                 val navBackStackEntry by navController.currentBackStackEntryAsState()
@@ -120,6 +131,7 @@ class MainActivity : ComponentActivity() {
                             isLoggedIn = NetworkClient.isLoggedIn(),
                             userName = NetworkClient.currentUserName,
                             isDark = isDark,
+                            hasUpdate = updateState is UpdateUiState.UpdateAvailable,
                             onToggleTheme = { ThemePreferences.toggleLightDark(isDark) },
                             onSyncClick = { syncManager.scheduleSync() },
                             onSettingsClick = { showServerConfigDialog = true }
@@ -168,6 +180,11 @@ class MainActivity : ComponentActivity() {
                             }
                         )
                     }
+
+                    UpdateBottomSheet(
+                        updateState = updateState,
+                        updateManager = updateManager
+                    )
                 }
             }
         }
@@ -497,6 +514,97 @@ fun ServerConfigDialog(
                     }
                 }
 
+                HorizontalDivider(
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                    modifier = Modifier.padding(vertical = 4.dp)
+                )
+
+                val updateManager = remember { UpdateManager.getInstance(context) }
+                val updateState by updateManager.uiState.collectAsState()
+                val currentVersion = remember { updateManager.getCurrentVersionName() }
+
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = "Actualizaciones",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column {
+                            Text(
+                                text = "Versión instalada",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.outline
+                            )
+                            Text(
+                                text = "v$currentVersion",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+
+                        OutlinedButton(
+                            onClick = {
+                                if (updateState is UpdateUiState.UpdateAvailable) {
+                                    onDismiss()
+                                } else {
+                                    updateManager.checkForUpdates(isManual = true)
+                                }
+                            },
+                            enabled = updateState !is UpdateUiState.Checking && updateState !is UpdateUiState.Downloading,
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            if (updateState is UpdateUiState.Checking) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(14.dp),
+                                    strokeWidth = 2.dp,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Buscando...", fontSize = 12.sp)
+                            } else if (updateState is UpdateUiState.UpdateAvailable) {
+                                Icon(
+                                    Icons.Default.NewReleases,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Ver v${(updateState as UpdateUiState.UpdateAvailable).updateInfo.versionName}", fontSize = 12.sp)
+                            } else {
+                                Icon(
+                                    Icons.Default.Refresh,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Buscar", fontSize = 12.sp)
+                            }
+                        }
+                    }
+
+                    if (updateState is UpdateUiState.UpToDate) {
+                        Text(
+                            text = "✓ Tienes la versión más reciente",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    } else if (updateState is UpdateUiState.Error) {
+                        Text(
+                            text = (updateState as UpdateUiState.Error).message,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
+
                 if (statusMessage != null) {
                     Text(
                         text = statusMessage!!,
@@ -523,6 +631,7 @@ fun FamilyTopHeader(
     isLoggedIn: Boolean,
     userName: String?,
     isDark: Boolean,
+    hasUpdate: Boolean = false,
     onToggleTheme: () -> Unit,
     onSyncClick: () -> Unit,
     onSettingsClick: () -> Unit,
@@ -583,6 +692,23 @@ fun FamilyTopHeader(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
+                    if (hasUpdate) {
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            modifier = Modifier.size(38.dp)
+                        ) {
+                            IconButton(onClick = onSettingsClick) {
+                                Icon(
+                                    imageVector = Icons.Default.NewReleases,
+                                    contentDescription = "Nueva actualización disponible",
+                                    modifier = Modifier.size(20.dp),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                    }
+
                     if (isLoggedIn) {
                         SyncBadge(
                             state = syncState,

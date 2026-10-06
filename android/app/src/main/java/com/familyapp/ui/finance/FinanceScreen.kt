@@ -19,8 +19,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.TrendingDown
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AccountBalanceWallet
+import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material3.*
@@ -46,7 +48,9 @@ import com.familyapp.core.database.entity.SyncStatus
 import com.familyapp.ui.components.ModalImeBackHandler
 import com.familyapp.ui.theme.SyncOrange
 import java.text.NumberFormat
+import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
@@ -71,7 +75,10 @@ fun FinanceScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     var showAddExpenseSheet by remember { mutableStateOf(false) }
+    var editingTransaction by remember { mutableStateOf<FinanceTransactionEntity?>(null) }
     var showAddAccountDialog by remember { mutableStateOf(false) }
+    var accountToEdit by remember { mutableStateOf<AccountEntity?>(null) }
+    var accountToDelete by remember { mutableStateOf<AccountEntity?>(null) }
     var transactionToDelete by remember { mutableStateOf<FinanceTransactionEntity?>(null) }
 
     val haptic = LocalHapticFeedback.current
@@ -144,6 +151,9 @@ fun FinanceScreen(
                             onClick = {
                                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                 viewModel.selectAccountFilter(item.account.id)
+                            },
+                            onEdit = {
+                                accountToEdit = item.account
                             }
                         )
                     }
@@ -223,6 +233,7 @@ fun FinanceScreen(
                         ExpenseItemCard(
                             transaction = tx,
                             accountName = accountName,
+                            onEdit = { editingTransaction = tx },
                             onDelete = { transactionToDelete = tx },
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
                         )
@@ -252,6 +263,30 @@ fun FinanceScreen(
         )
     }
 
+    // Modal Sheet for editing expense
+    if (editingTransaction != null) {
+        AddExpenseSheet(
+            accounts = uiState.accounts.map { it.account },
+            initialAccountId = editingTransaction?.accountId,
+            transactionToEdit = editingTransaction,
+            onDismiss = { editingTransaction = null },
+            onSave = { accountId, amount, category, description, date, type ->
+                editingTransaction?.let { tx ->
+                    viewModel.updateExpense(
+                        tx = tx,
+                        accountId = accountId,
+                        amount = amount,
+                        category = category,
+                        description = description,
+                        date = date,
+                        type = type
+                    )
+                }
+                editingTransaction = null
+            }
+        )
+    }
+
     // Dialog for adding an account
     if (showAddAccountDialog) {
         AddAccountDialog(
@@ -263,12 +298,63 @@ fun FinanceScreen(
         )
     }
 
+    // Dialog for editing an account
+    if (accountToEdit != null) {
+        EditAccountDialog(
+            account = accountToEdit!!,
+            onDismiss = { accountToEdit = null },
+            onSave = { name, initialBalance, colorHex ->
+                accountToEdit?.let { acc ->
+                    viewModel.updateAccount(acc, name, initialBalance, colorHex)
+                }
+                accountToEdit = null
+            },
+            onDelete = {
+                accountToDelete = accountToEdit
+                accountToEdit = null
+            }
+        )
+    }
+
+    // Confirmation dialog for deleting an account
+    if (accountToDelete != null) {
+        AlertDialog(
+            onDismissRequest = { accountToDelete = null },
+            properties = DialogProperties(dismissOnBackPress = false),
+            title = { Text("¿Eliminar cuenta?") },
+            text = {
+                ModalImeBackHandler(onDismiss = { accountToDelete = null })
+                Text("Se eliminará la cuenta '${accountToDelete?.name}' y todos sus movimientos asociados.")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        accountToDelete?.let { viewModel.deleteAccount(it) }
+                        accountToDelete = null
+                    },
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Eliminar")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { accountToDelete = null }) {
+                    Text("Cancelar")
+                }
+            }
+        )
+    }
+
     // Confirmation dialog for deleting transaction
     if (transactionToDelete != null) {
         AlertDialog(
             onDismissRequest = { transactionToDelete = null },
+            properties = DialogProperties(dismissOnBackPress = false),
             title = { Text("¿Eliminar movimiento?") },
-            text = { Text("Se eliminará '${transactionToDelete?.description}' y su saldo se recalculará automáticamente.") },
+            text = {
+                ModalImeBackHandler(onDismiss = { transactionToDelete = null })
+                Text("Se eliminará '${transactionToDelete?.description}' y su saldo se recalculará automáticamente.")
+            },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -373,7 +459,8 @@ fun GeneralBalanceCard(
 fun AccountCard(
     accountWithBalance: AccountWithBalance,
     isSelected: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onEdit: () -> Unit
 ) {
     val acc = accountWithBalance.account
     val accColor = parseColorSafe(acc.colorHex)
@@ -389,7 +476,7 @@ fun AccountCard(
         color = if (isSelected) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surface,
         tonalElevation = if (isSelected) 3.dp else 1.dp,
         modifier = Modifier
-            .width(150.dp)
+            .width(155.dp)
             .border(
                 width = if (isSelected) 2.dp else 1.dp,
                 color = borderColor,
@@ -404,17 +491,31 @@ fun AccountCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(10.dp)
-                        .clip(CircleShape)
-                        .background(accColor)
-                )
-                if (isSelected) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(10.dp)
+                            .clip(CircleShape)
+                            .background(accColor)
+                    )
+                    if (isSelected) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Icon(
+                            Icons.Default.Check,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+                }
+                IconButton(
+                    onClick = onEdit,
+                    modifier = Modifier.size(24.dp)
+                ) {
                     Icon(
-                        Icons.Default.Check,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
+                        Icons.Default.Edit,
+                        contentDescription = "Editar cuenta",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                         modifier = Modifier.size(14.dp)
                     )
                 }
@@ -446,6 +547,7 @@ fun AccountCard(
 fun ExpenseItemCard(
     transaction: FinanceTransactionEntity,
     accountName: String,
+    onEdit: () -> Unit,
     onDelete: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -466,6 +568,7 @@ fun ExpenseItemCard(
     }
 
     Surface(
+        onClick = onEdit,
         shape = RoundedCornerShape(14.dp),
         color = MaterialTheme.colorScheme.surface,
         tonalElevation = 1.dp,
@@ -543,7 +646,7 @@ fun ExpenseItemCard(
 
             Spacer(modifier = Modifier.width(8.dp))
 
-            // Amount & Delete action
+            // Amount & Actions
             Column(horizontalAlignment = Alignment.End) {
                 val amountText = if (isExpense) "-${formatCurrency(transaction.amount)}" else "+${formatCurrency(transaction.amount)}"
                 val amountColor = if (isExpense) Color(0xFF9E4726) else MaterialTheme.colorScheme.primary
@@ -555,16 +658,31 @@ fun ExpenseItemCard(
                     color = amountColor
                 )
 
-                IconButton(
-                    onClick = onDelete,
-                    modifier = Modifier.size(24.dp)
-                ) {
-                    Icon(
-                        Icons.Default.Delete,
-                        contentDescription = "Eliminar",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                        modifier = Modifier.size(16.dp)
-                    )
+                Spacer(modifier = Modifier.height(2.dp))
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(
+                        onClick = onEdit,
+                        modifier = Modifier.size(26.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Edit,
+                            contentDescription = "Editar",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            modifier = Modifier.size(15.dp)
+                        )
+                    }
+                    IconButton(
+                        onClick = onDelete,
+                        modifier = Modifier.size(26.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Delete,
+                            contentDescription = "Eliminar",
+                            tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
+                            modifier = Modifier.size(15.dp)
+                        )
+                    }
                 }
             }
         }
@@ -606,21 +724,48 @@ fun EmptyFinanceState(modifier: Modifier = Modifier) {
 fun AddExpenseSheet(
     accounts: List<AccountEntity>,
     initialAccountId: String?,
+    transactionToEdit: FinanceTransactionEntity? = null,
     onDismiss: () -> Unit,
     onSave: (accountId: String, amount: Double, category: String, description: String, date: String, type: String) -> Unit
 ) {
-    var amountText by remember { mutableStateOf("") }
-    var description by remember { mutableStateOf("") }
-    var selectedCategory by remember { mutableStateOf("Supermercado") }
-    var selectedAccountId by remember { mutableStateOf(initialAccountId ?: accounts.firstOrNull()?.id ?: "") }
-    var isExpense by remember { mutableStateOf(true) }
-    var selectedDate by remember { mutableStateOf(LocalDate.now()) }
+    val isEditMode = transactionToEdit != null
+    var amountText by remember {
+        mutableStateOf(
+            transactionToEdit?.let {
+                if (it.amount % 1.0 == 0.0) it.amount.toLong().toString() else it.amount.toString()
+            } ?: ""
+        )
+    }
+    var description by remember { mutableStateOf(transactionToEdit?.description ?: "") }
+    var selectedCategory by remember { mutableStateOf(transactionToEdit?.category ?: "Supermercado") }
+    var selectedAccountId by remember {
+        mutableStateOf(
+            transactionToEdit?.accountId ?: initialAccountId ?: accounts.firstOrNull()?.id ?: ""
+        )
+    }
+    var isExpense by remember {
+        mutableStateOf(transactionToEdit?.let { it.type != "INCOME" } ?: true)
+    }
+    var selectedDate by remember {
+        mutableStateOf(
+            transactionToEdit?.let {
+                try {
+                    LocalDate.parse(it.date.take(10))
+                } catch (e: Exception) {
+                    LocalDate.now()
+                }
+            } ?: LocalDate.now()
+        )
+    }
+    var showDatePicker by remember { mutableStateOf(false) }
 
     val haptic = LocalHapticFeedback.current
     val focusRequester = remember { FocusRequester() }
 
     LaunchedEffect(Unit) {
-        focusRequester.requestFocus()
+        if (!isEditMode) {
+            focusRequester.requestFocus()
+        }
     }
 
     ModalBottomSheet(
@@ -637,13 +782,20 @@ fun AddExpenseSheet(
                 .padding(bottom = 36.dp)
         ) {
             // Sheet Header with Expense/Income toggle
+            val titleText = when {
+                isEditMode && isExpense -> "Editar Gasto"
+                isEditMode && !isExpense -> "Editar Ingreso"
+                !isEditMode && isExpense -> "Registrar Gasto"
+                else -> "Registrar Ingreso"
+            }
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = if (isExpense) "Registrar Gasto" else "Registrar Ingreso",
+                    text = titleText,
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold
                 )
@@ -679,7 +831,7 @@ fun AddExpenseSheet(
                 textStyle = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .focusRequester(focusRequester),
+                    .then(if (!isEditMode) Modifier.focusRequester(focusRequester) else Modifier),
                 shape = RoundedCornerShape(14.dp)
             )
 
@@ -755,7 +907,7 @@ fun AddExpenseSheet(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // Date Quick Selector
+            // Date Selector with Quick Chips + Full DatePicker
             Text(
                 text = "Fecha:",
                 style = MaterialTheme.typography.labelMedium,
@@ -763,10 +915,15 @@ fun AddExpenseSheet(
             )
             Spacer(modifier = Modifier.height(6.dp))
             Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 val today = LocalDate.now()
                 val yesterday = today.minusDays(1)
+                val isOtherDate = selectedDate != today && selectedDate != yesterday
 
                 FilterChip(
                     selected = selectedDate == today,
@@ -777,6 +934,23 @@ fun AddExpenseSheet(
                     selected = selectedDate == yesterday,
                     onClick = { selectedDate = yesterday },
                     label = { Text("Ayer") }
+                )
+                FilterChip(
+                    selected = isOtherDate,
+                    onClick = { showDatePicker = true },
+                    leadingIcon = {
+                        Icon(
+                            Icons.Default.CalendarToday,
+                            contentDescription = null,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    },
+                    label = {
+                        Text(
+                            if (isOtherDate) selectedDate.format(DateTimeFormatter.ofPattern("dd/MM/yyyy"))
+                            else "Otra fecha"
+                        )
+                    }
                 )
             }
 
@@ -805,8 +979,44 @@ fun AddExpenseSheet(
                     .fillMaxWidth()
                     .height(52.dp)
             ) {
-                Text("Guardar", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                Text(
+                    text = if (isEditMode) "Guardar Cambios" else "Guardar",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
             }
+        }
+    }
+
+    if (showDatePicker) {
+        val datePickerState = rememberDatePickerState(
+            initialSelectedDateMillis = selectedDate.atStartOfDay(ZoneId.of("UTC")).toInstant().toEpochMilli()
+        )
+
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val millis = datePickerState.selectedDateMillis
+                        if (millis != null) {
+                            selectedDate = Instant.ofEpochMilli(millis)
+                                .atZone(ZoneId.of("UTC"))
+                                .toLocalDate()
+                        }
+                        showDatePicker = false
+                    }
+                ) {
+                    Text("Aceptar")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDatePicker = false }) {
+                    Text("Cancelar")
+                }
+            }
+        ) {
+            DatePicker(state = datePickerState)
         }
     }
 }
@@ -849,7 +1059,7 @@ fun AddAccountDialog(
 
                 OutlinedTextField(
                     value = initialBalanceText,
-                    onValueChange = { initialBalanceText = it.filter { ch -> ch.isDigit() || ch == '.' } },
+                    onValueChange = { initialBalanceText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == '-' } },
                     label = { Text("Saldo inicial ($)") },
                     placeholder = { Text("0") },
                     singleLine = true,
@@ -869,7 +1079,7 @@ fun AddAccountDialog(
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     botanicalColors.forEach { (hex, _) ->
-                        val isSelected = selectedColor == hex
+                        val isSelected = selectedColor.equals(hex, ignoreCase = true)
                         Box(
                             modifier = Modifier
                                 .size(32.dp)
@@ -906,6 +1116,128 @@ fun AddAccountDialog(
                 enabled = name.isNotBlank()
             ) {
                 Text("Crear Cuenta")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancelar")
+            }
+        }
+    )
+}
+
+@Composable
+fun EditAccountDialog(
+    account: AccountEntity,
+    onDismiss: () -> Unit,
+    onSave: (name: String, initialBalance: Double, colorHex: String) -> Unit,
+    onDelete: () -> Unit
+) {
+    var name by remember { mutableStateOf(account.name) }
+    var initialBalanceText by remember {
+        mutableStateOf(
+            if (account.initialBalance % 1.0 == 0.0) account.initialBalance.toLong().toString()
+            else account.initialBalance.toString()
+        )
+    }
+    var selectedColor by remember { mutableStateOf(account.colorHex) }
+
+    val botanicalColors = listOf(
+        "#1E523A" to "Verde Bosque",
+        "#1976D2" to "Azul Río",
+        "#9E4726" to "Terracota",
+        "#7A5900" to "Ocre Dorado",
+        "#6A1B9A" to "Lavanda"
+    )
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(dismissOnBackPress = false),
+        title = { Text("Editar Cuenta") },
+        text = {
+            ModalImeBackHandler(onDismiss = onDismiss)
+            Column {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Nombre de cuenta") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                OutlinedTextField(
+                    value = initialBalanceText,
+                    onValueChange = { initialBalanceText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == '-' } },
+                    label = { Text("Saldo inicial ($)") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Text(
+                    text = "Color identificador:",
+                    style = MaterialTheme.typography.labelMedium
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    botanicalColors.forEach { (hex, _) ->
+                        val isSelected = selectedColor.equals(hex, ignoreCase = true)
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(CircleShape)
+                                .background(parseColorSafe(hex))
+                                .clickable { selectedColor = hex }
+                                .then(
+                                    if (isSelected) Modifier.border(2.dp, MaterialTheme.colorScheme.onSurface, CircleShape)
+                                    else Modifier
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (isSelected) {
+                                Icon(
+                                    Icons.Default.Check,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                TextButton(
+                    onClick = onDelete,
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                    modifier = Modifier.align(Alignment.Start)
+                ) {
+                    Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Eliminar esta cuenta")
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (name.isNotBlank()) {
+                        val initBal = initialBalanceText.toDoubleOrNull() ?: 0.0
+                        onSave(name.trim(), initBal, selectedColor)
+                    }
+                },
+                enabled = name.isNotBlank()
+            ) {
+                Text("Guardar Cambios")
             }
         },
         dismissButton = {
