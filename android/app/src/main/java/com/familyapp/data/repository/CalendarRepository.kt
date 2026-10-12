@@ -5,20 +5,27 @@ import com.familyapp.core.database.entity.CalendarEventEntity
 import com.familyapp.core.database.entity.SyncStatus
 import com.familyapp.core.network.NetworkClient
 import com.familyapp.sync.SyncManager
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flatMapLatest
 import java.time.Instant
 import java.util.UUID
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class CalendarRepository(
     private val calendarEventDao: CalendarEventDao,
     private val syncManager: SyncManager
 ) {
     fun getEventsInRange(start: String, end: String): Flow<List<CalendarEventEntity>> {
-        return calendarEventDao.getEventsInRange(NetworkClient.currentFamilyId, start, end)
+        return NetworkClient.familyIdFlow.flatMapLatest { familyId ->
+            calendarEventDao.getEventsInRange(familyId, start, end)
+        }
     }
 
     fun getAllEvents(): Flow<List<CalendarEventEntity>> {
-        return calendarEventDao.getAllEvents(NetworkClient.currentFamilyId)
+        return NetworkClient.familyIdFlow.flatMapLatest { familyId ->
+            calendarEventDao.getAllEvents(familyId)
+        }
     }
 
     suspend fun addEvent(

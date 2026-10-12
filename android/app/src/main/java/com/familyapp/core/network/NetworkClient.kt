@@ -9,6 +9,9 @@ import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 object NetworkClient {
     private const val PREFS_NAME = "family_app_prefs"
@@ -30,6 +33,9 @@ object NetworkClient {
 
     var currentFamilyId: String = "default-family"
         private set
+
+    private val _familyIdFlow = MutableStateFlow("default-family")
+    val familyIdFlow: StateFlow<String> = _familyIdFlow.asStateFlow()
 
     var currentUserName: String? = null
         private set
@@ -56,6 +62,7 @@ object NetworkClient {
             currentUserName = it.getString(KEY_USER_NAME, null)
             currentUserEmail = it.getString(KEY_USER_EMAIL, null)
         }
+        _familyIdFlow.value = currentFamilyId
         Log.d("NetworkClient", "Initialized with baseUrl: $baseUrl, hasToken: ${authToken != null}")
         rebuildRetrofit()
     }
@@ -74,6 +81,7 @@ object NetworkClient {
         currentFamilyId = familyId
         currentUserName = name
         currentUserEmail = email
+        _familyIdFlow.value = familyId
 
         prefs?.edit()
             ?.putString(KEY_AUTH_TOKEN, token)
@@ -91,6 +99,7 @@ object NetworkClient {
         currentFamilyId = "default-family"
         currentUserName = null
         currentUserEmail = null
+        _familyIdFlow.value = "default-family"
 
         prefs?.edit()
             ?.remove(KEY_AUTH_TOKEN)

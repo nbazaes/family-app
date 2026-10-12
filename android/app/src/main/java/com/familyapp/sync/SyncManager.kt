@@ -117,16 +117,8 @@ class SyncManager(private val context: Context) {
                             Log.d("SyncManager", "SSE Connected to family channel")
                         }
                         "item_created", "item_updated" -> {
-                            try {
-                                val itemDto = gson.fromJson(sseEvent.data, ItemDto::class.java)
-                                if (itemDto != null) {
-                                    db.itemDao().upsert(
-                                        itemDto.toEntity(NetworkClient.currentFamilyId, SyncStatus.SYNCED)
-                                    )
-                                }
-                            } catch (e: Exception) {
-                                Log.e("SyncManager", "Error parsing SSE item: ${e.message}")
-                            }
+                            Log.d("SyncManager", "SSE item mutation received -> triggering scheduleSync()")
+                            scheduleSync()
                         }
                         "item_deleted" -> {
                             try {
@@ -137,18 +129,11 @@ class SyncManager(private val context: Context) {
                             } catch (e: Exception) {
                                 Log.e("SyncManager", "Error handling item delete: ${e.message}")
                             }
+                            scheduleSync()
                         }
                         "event_created", "event_updated" -> {
-                            try {
-                                val eventDto = gson.fromJson(sseEvent.data, CalendarEventDto::class.java)
-                                if (eventDto != null) {
-                                    db.calendarEventDao().upsert(
-                                        eventDto.toEntity(NetworkClient.currentFamilyId, SyncStatus.SYNCED)
-                                    )
-                                }
-                            } catch (e: Exception) {
-                                Log.e("SyncManager", "Error parsing SSE event: ${e.message}")
-                            }
+                            Log.d("SyncManager", "SSE event mutation received -> triggering scheduleSync()")
+                            scheduleSync()
                         }
                         "event_deleted" -> {
                             try {
@@ -159,18 +144,11 @@ class SyncManager(private val context: Context) {
                             } catch (e: Exception) {
                                 Log.e("SyncManager", "Error handling calendar event delete: ${e.message}")
                             }
+                            scheduleSync()
                         }
                         "account_created", "account_updated" -> {
-                            try {
-                                val accDto = gson.fromJson(sseEvent.data, AccountDto::class.java)
-                                if (accDto != null) {
-                                    db.accountDao().upsert(
-                                        accDto.toEntity(NetworkClient.currentFamilyId, SyncStatus.SYNCED)
-                                    )
-                                }
-                            } catch (e: Exception) {
-                                Log.e("SyncManager", "Error parsing SSE account: ${e.message}")
-                            }
+                            Log.d("SyncManager", "SSE account mutation received -> triggering scheduleSync()")
+                            scheduleSync()
                         }
                         "account_deleted" -> {
                             try {
@@ -181,18 +159,11 @@ class SyncManager(private val context: Context) {
                             } catch (e: Exception) {
                                 Log.e("SyncManager", "Error handling account delete: ${e.message}")
                             }
+                            scheduleSync()
                         }
                         "finance_transaction_created", "finance_transaction_updated" -> {
-                            try {
-                                val txDto = gson.fromJson(sseEvent.data, FinanceTransactionDto::class.java)
-                                if (txDto != null) {
-                                    db.financeTransactionDao().upsert(
-                                        txDto.toEntity(NetworkClient.currentFamilyId, SyncStatus.SYNCED)
-                                    )
-                                }
-                            } catch (e: Exception) {
-                                Log.e("SyncManager", "Error parsing SSE finance transaction: ${e.message}")
-                            }
+                            Log.d("SyncManager", "SSE finance transaction mutation received -> triggering scheduleSync()")
+                            scheduleSync()
                         }
                         "finance_transaction_deleted" -> {
                             try {
@@ -203,6 +174,7 @@ class SyncManager(private val context: Context) {
                             } catch (e: Exception) {
                                 Log.e("SyncManager", "Error handling finance transaction delete: ${e.message}")
                             }
+                            scheduleSync()
                         }
                     }
                 }

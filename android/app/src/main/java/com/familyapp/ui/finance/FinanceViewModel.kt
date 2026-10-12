@@ -56,11 +56,6 @@ class FinanceViewModel(
         _selectedAccountId,
         _selectedCategory
     ) { accounts, transactions, selectedAccId, selectedCat ->
-        // If no accounts exist yet, seed default accounts once
-        if (accounts.isEmpty()) {
-            repository.ensureDefaultAccounts()
-        }
-
         // Calculate balances per account
         val accountsWithBalance = accounts.map { acc ->
             val accTxs = transactions.filter { it.accountId == acc.id }

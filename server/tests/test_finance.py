@@ -121,3 +121,61 @@ async def test_finance_batch_sync(client: AsyncClient, auth_headers: dict):
     assert tx_id in data["synced_transaction_ids"]
     assert any(a["id"] == acc_id for a in data["server_accounts"])
     assert any(t["id"] == tx_id for t in data["server_transactions"])
+
+
+@pytest.mark.asyncio
+async def test_finance_deduplication(client: AsyncClient, auth_headers: dict):
+    headers = {"Authorization": auth_headers["Authorization"]}
+    now = datetime.now(timezone.utc)
+
+    # 1. Create one real account with transactions
+    acc1_id = str(uuid.uuid4())
+    # 2. Create duplicate empty accounts with identical name and 0 balance
+    acc2_id = str(uuid.uuid4())
+    acc3_id = str(uuid.uuid4())
+
+    payload = {
+        "accounts": [
+            {
+                "id": acc1_id,
+                "name": "Banco",
+                "initial_balance": 50000.0,
+                "color_hex": "#1976D2",
+                "created_at": now.isoformat(),
+                "updated_at": now.isoformat(),
+            },
+            {
+                "id": acc2_id,
+                "name": "Banco",
+                "initial_balance": 0.0,
+                "color_hex": "#1976D2",
+                "created_at": now.isoformat(),
+                "updated_at": now.isoformat(),
+            },
+            {
+                "id": acc3_id,
+                "name": "Banco",
+                "initial_balance": 0.0,
+                "color_hex": "#1976D2",
+                "created_at": now.isoformat(),
+                "updated_at": now.isoformat(),
+            },
+        ],
+        "transactions": [],
+        "since": None,
+    }
+
+    sync_res = await client.post("/api/finance/batch-sync", json=payload, headers=headers)
+    assert sync_res.status_code == 200
+    server_accs = sync_res.json()["server_accounts"]
+
+    # Active accounts (not deleted)
+    active_bancos = [a for a in server_accs if a["name"] == "Banco" and not a.get("deleted_at")]
+    assert len(active_bancos) == 1
+    assert active_bancos[0]["id"] == acc1_id
+    assert active_bancos[0]["initial_balance"] == 50000.0
+
+    # Duplicates should be tombstoned
+    deleted_bancos = [a for a in server_accs if a["name"] == "Banco" and a.get("deleted_at")]
+    assert len(deleted_bancos) == 2
+

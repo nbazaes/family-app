@@ -5,16 +5,21 @@ import com.familyapp.core.database.entity.ItemEntity
 import com.familyapp.core.database.entity.SyncStatus
 import com.familyapp.core.network.NetworkClient
 import com.familyapp.sync.SyncManager
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flatMapLatest
 import java.time.Instant
 import java.util.UUID
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class TasksRepository(
     private val itemDao: ItemDao,
     private val syncManager: SyncManager
 ) {
     fun getTasks(): Flow<List<ItemEntity>> {
-        return itemDao.getItemsByType(NetworkClient.currentFamilyId, "TASK")
+        return NetworkClient.familyIdFlow.flatMapLatest { familyId ->
+            itemDao.getItemsByType(familyId, "TASK")
+        }
     }
 
     suspend fun addTask(

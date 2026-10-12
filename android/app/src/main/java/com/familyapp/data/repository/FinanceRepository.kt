@@ -7,21 +7,28 @@ import com.familyapp.core.database.entity.FinanceTransactionEntity
 import com.familyapp.core.database.entity.SyncStatus
 import com.familyapp.core.network.NetworkClient
 import com.familyapp.sync.SyncManager
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flatMapLatest
 import java.time.Instant
 import java.util.UUID
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class FinanceRepository(
     private val accountDao: AccountDao,
     private val transactionDao: FinanceTransactionDao,
     private val syncManager: SyncManager
 ) {
     fun getAccounts(): Flow<List<AccountEntity>> {
-        return accountDao.getAccounts(NetworkClient.currentFamilyId)
+        return NetworkClient.familyIdFlow.flatMapLatest { familyId ->
+            accountDao.getAccounts(familyId)
+        }
     }
 
     fun getTransactions(): Flow<List<FinanceTransactionEntity>> {
-        return transactionDao.getTransactions(NetworkClient.currentFamilyId)
+        return NetworkClient.familyIdFlow.flatMapLatest { familyId ->
+            transactionDao.getTransactions(familyId)
+        }
     }
 
     suspend fun addAccount(
@@ -128,17 +135,5 @@ class FinanceRepository(
         val now = Instant.now().toString()
         transactionDao.markDeleted(tx.id, deletedAt = now, updatedAt = now)
         syncManager.scheduleSync()
-    }
-
-    suspend fun ensureDefaultAccounts() {
-        val existing = accountDao.getPendingSyncAccounts()
-        // If no accounts yet, add defaults
-        val defaultList = listOf(
-            Triple("Efectivo", 0.0, "#1E523A"),
-            Triple("Banco", 0.0, "#1976D2")
-        )
-        for (def in defaultList) {
-            addAccount(def.first, def.second, def.third)
-        }
     }
 }

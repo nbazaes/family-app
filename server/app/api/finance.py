@@ -115,6 +115,9 @@ async def create_account(
         {
             "id": account.id,
             "name": account.name,
+            "initial_balance": account.initial_balance,
+            "color_hex": account.color_hex,
+            "created_at": account.created_at.isoformat(),
             "updated_at": account.updated_at.isoformat(),
         },
     )
@@ -170,6 +173,9 @@ async def update_account(
         {
             "id": account.id,
             "name": account.name,
+            "initial_balance": account.initial_balance,
+            "color_hex": account.color_hex,
+            "created_at": account.created_at.isoformat(),
             "updated_at": account.updated_at.isoformat(),
         },
     )
@@ -295,6 +301,10 @@ async def create_transaction(
             "amount": tx.amount,
             "category": tx.category,
             "description": tx.description,
+            "date": tx.date.isoformat(),
+            "type": tx.type,
+            "created_by": tx.created_by,
+            "created_at": tx.created_at.isoformat(),
             "updated_at": tx.updated_at.isoformat(),
         },
     )
@@ -356,6 +366,12 @@ async def update_transaction(
             "id": tx.id,
             "account_id": tx.account_id,
             "amount": tx.amount,
+            "category": tx.category,
+            "description": tx.description,
+            "date": tx.date.isoformat(),
+            "type": tx.type,
+            "created_by": tx.created_by,
+            "created_at": tx.created_at.isoformat(),
             "updated_at": tx.updated_at.isoformat(),
         },
     )

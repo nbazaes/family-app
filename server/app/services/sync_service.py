@@ -1,7 +1,7 @@
 from typing import List, Tuple, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_
+from sqlalchemy import select, and_, or_, func
 from app.models.item import Item
 from app.models.event import CalendarEvent
 from app.models.finance import Account, FinanceTransaction
@@ -233,6 +233,9 @@ class SyncService:
                     {
                         "id": new_acc.id,
                         "name": new_acc.name,
+                        "initial_balance": new_acc.initial_balance,
+                        "color_hex": new_acc.color_hex,
+                        "created_at": new_acc.created_at.isoformat(),
                         "updated_at": new_acc.updated_at.isoformat(),
                     },
                 )
@@ -251,6 +254,9 @@ class SyncService:
                         {
                             "id": existing.id,
                             "name": existing.name,
+                            "initial_balance": existing.initial_balance,
+                            "color_hex": existing.color_hex,
+                            "created_at": existing.created_at.isoformat(),
                             "updated_at": existing.updated_at.isoformat(),
                         },
                     )
@@ -258,6 +264,43 @@ class SyncService:
                     synced_ids.append(acc_data.id)
 
         await db.commit()
+
+        # Deduplicate redundant empty accounts (e.g. from client loop)
+        active_accs_stmt = select(Account).where(
+            and_(Account.family_id == family_id, Account.deleted_at.is_(None))
+        ).order_by(Account.created_at.asc())
+        active_accs_res = await db.execute(active_accs_stmt)
+        active_accs = list(active_accs_res.scalars().all())
+
+        by_name = {}
+        for acc in active_accs:
+            by_name.setdefault(acc.name.strip().lower(), []).append(acc)
+
+        dedup_changed = False
+        now_utc = datetime.now(timezone.utc)
+        for name_key, acc_list in by_name.items():
+            if len(acc_list) > 1:
+                for candidate in acc_list:
+                    # Keep at least one account per name
+                    alive = [a for a in acc_list if not a.deleted_at]
+                    if len(alive) <= 1:
+                        break
+                    tx_check = await db.execute(
+                        select(func.count(FinanceTransaction.id)).where(
+                            and_(
+                                FinanceTransaction.account_id == candidate.id,
+                                FinanceTransaction.deleted_at.is_(None),
+                            )
+                        )
+                    )
+                    tx_count = tx_check.scalar() or 0
+                    if tx_count == 0 and candidate.initial_balance == 0.0:
+                        candidate.deleted_at = now_utc
+                        candidate.updated_at = now_utc
+                        dedup_changed = True
+
+        if dedup_changed:
+            await db.commit()
 
         query = select(Account).where(Account.family_id == family_id)
         if since is not None:
