@@ -40,7 +40,7 @@ data class AccountDto(
                 colorHex = entity.colorHex,
                 createdAt = entity.createdAt,
                 updatedAt = entity.updatedAt,
-                deletedAt = entity.deletedAt
+                deletedAt = entity.deletedAt?.ifBlank { null }
             )
         }
     }
@@ -92,7 +92,7 @@ data class FinanceTransactionDto(
                 createdBy = entity.createdBy,
                 createdAt = entity.createdAt,
                 updatedAt = entity.updatedAt,
-                deletedAt = entity.deletedAt
+                deletedAt = entity.deletedAt?.ifBlank { null }
             )
         }
     }

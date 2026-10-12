@@ -99,6 +99,17 @@ class CalendarViewModel(
         _selectedMemberFilter.value = filter
     }
 
+    private fun normalizeTimeString(time: String, defaultHour: String): String {
+        val clean = time.trim()
+        val parts = clean.split(":")
+        if (parts.size >= 2) {
+            val h = parts[0].padStart(2, '0')
+            val m = parts[1].padStart(2, '0')
+            return "$h:$m:00"
+        }
+        return defaultHour
+    }
+
     fun addEvent(
         title: String,
         description: String?,
@@ -111,8 +122,8 @@ class CalendarViewModel(
     ) {
         viewModelScope.launch {
             if (title.isNotBlank()) {
-                val fullStart = if (isAllDay) "${date}T00:00:00Z" else "${date}T${startTime}:00Z"
-                val fullEnd = if (isAllDay) "${date}T23:59:59Z" else "${date}T${endTime}:00Z"
+                val fullStart = if (isAllDay) "${date}T00:00:00Z" else "${date}T${normalizeTimeString(startTime, "10:00:00")}Z"
+                val fullEnd = if (isAllDay) "${date}T23:59:59Z" else "${date}T${normalizeTimeString(endTime, "11:30:00")}Z"
 
                 repository.addEvent(
                     title = title.trim(),

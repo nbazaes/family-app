@@ -26,11 +26,26 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 
-enum class SyncUiState {
-    IDLE,
-    SYNCING,
-    OFFLINE
+sealed class SyncUiState {
+    object IDLE : SyncUiState()
+    object SYNCING : SyncUiState()
+    object OFFLINE : SyncUiState()
+    data class ERROR(
+        val title: String,
+        val message: String,
+        val solution: String,
+        val failedModule: String? = null,
+        val timestamp: Long = System.currentTimeMillis()
+    ) : SyncUiState()
 }
+
+data class SyncErrorDetails(
+    val title: String,
+    val message: String,
+    val solution: String,
+    val failedModule: String? = null,
+    val timestamp: Long = System.currentTimeMillis()
+)
 
 class SyncManager(private val context: Context) {
     private val workManager = WorkManager.getInstance(context)
@@ -39,8 +54,11 @@ class SyncManager(private val context: Context) {
     private val gson = Gson()
     private val coroutineScope = CoroutineScope(Dispatchers.IO + Job())
 
-    private val _syncUiState = MutableStateFlow(SyncUiState.IDLE)
+    private val _syncUiState = MutableStateFlow<SyncUiState>(SyncUiState.IDLE)
     val syncUiState: StateFlow<SyncUiState> = _syncUiState.asStateFlow()
+
+    private val _currentError = MutableStateFlow<SyncErrorDetails?>(null)
+    val currentError: StateFlow<SyncErrorDetails?> = _currentError.asStateFlow()
 
     private var sseJob: Job? = null
 
@@ -52,31 +70,89 @@ class SyncManager(private val context: Context) {
                     val activeWork = workInfos.firstOrNull()
                     if (activeWork != null) {
                         when (activeWork.state) {
-                            WorkInfo.State.RUNNING -> {
-                                Log.d("SyncManager", "Batch sync is RUNNING")
+                            WorkInfo.State.RUNNING, WorkInfo.State.ENQUEUED -> {
+                                Log.d("SyncManager", "Batch sync is RUNNING/ENQUEUED")
                                 _syncUiState.value = SyncUiState.SYNCING
                             }
                             WorkInfo.State.SUCCEEDED -> {
-                                Log.d("SyncManager", "Batch sync SUCCEEDED -> IDLE")
-                                _syncUiState.value = SyncUiState.IDLE
+                                val err = _currentError.value
+                                if (err != null) {
+                                    Log.w("SyncManager", "Batch sync finished with recorded error: ${err.title}")
+                                    _syncUiState.value = SyncUiState.ERROR(
+                                        title = err.title,
+                                        message = err.message,
+                                        solution = err.solution,
+                                        failedModule = err.failedModule,
+                                        timestamp = err.timestamp
+                                    )
+                                } else {
+                                    Log.d("SyncManager", "Batch sync SUCCEEDED -> IDLE")
+                                    _syncUiState.value = SyncUiState.IDLE
+                                }
                             }
                             WorkInfo.State.FAILED -> {
-                                Log.w("SyncManager", "Batch sync FAILED -> OFFLINE")
-                                _syncUiState.value = SyncUiState.OFFLINE
-                            }
-                            WorkInfo.State.ENQUEUED -> {
-                                Log.d("SyncManager", "Batch sync ENQUEUED")
-                                _syncUiState.value = SyncUiState.SYNCING
+                                val err = _currentError.value
+                                if (err != null) {
+                                    Log.w("SyncManager", "Batch sync FAILED with error: ${err.title}")
+                                    _syncUiState.value = SyncUiState.ERROR(
+                                        title = err.title,
+                                        message = err.message,
+                                        solution = err.solution,
+                                        failedModule = err.failedModule,
+                                        timestamp = err.timestamp
+                                    )
+                                } else {
+                                    Log.w("SyncManager", "Batch sync FAILED -> OFFLINE")
+                                    _syncUiState.value = SyncUiState.OFFLINE
+                                }
                             }
                             WorkInfo.State.BLOCKED, WorkInfo.State.CANCELLED -> {
-                                _syncUiState.value = SyncUiState.IDLE
+                                val err = _currentError.value
+                                if (err != null) {
+                                    _syncUiState.value = SyncUiState.ERROR(
+                                        title = err.title,
+                                        message = err.message,
+                                        solution = err.solution,
+                                        failedModule = err.failedModule,
+                                        timestamp = err.timestamp
+                                    )
+                                } else {
+                                    _syncUiState.value = SyncUiState.IDLE
+                                }
                             }
                         }
                     } else {
-                        _syncUiState.value = SyncUiState.IDLE
+                        val err = _currentError.value
+                        if (err != null) {
+                            _syncUiState.value = SyncUiState.ERROR(
+                                title = err.title,
+                                message = err.message,
+                                solution = err.solution,
+                                failedModule = err.failedModule,
+                                timestamp = err.timestamp
+                            )
+                        } else {
+                            _syncUiState.value = SyncUiState.IDLE
+                        }
                     }
                 }
         }
+    }
+
+    fun recordSyncError(error: SyncErrorDetails) {
+        _currentError.value = error
+        _syncUiState.value = SyncUiState.ERROR(
+            title = error.title,
+            message = error.message,
+            solution = error.solution,
+            failedModule = error.failedModule,
+            timestamp = error.timestamp
+        )
+    }
+
+    fun clearSyncError() {
+        _currentError.value = null
+        _syncUiState.value = SyncUiState.IDLE
     }
 
     fun scheduleSync() {

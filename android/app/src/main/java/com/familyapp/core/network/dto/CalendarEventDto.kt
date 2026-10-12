@@ -42,7 +42,7 @@ data class CalendarEventDto(
                 id = entity.id,
                 familyId = entity.familyId,
                 title = entity.title,
-                description = entity.description,
+                description = entity.description?.ifBlank { null },
                 startTime = entity.startTime,
                 endTime = entity.endTime,
                 isAllDay = entity.isAllDay,
@@ -50,7 +50,7 @@ data class CalendarEventDto(
                 createdBy = entity.createdBy,
                 createdAt = entity.createdAt,
                 updatedAt = entity.updatedAt,
-                deletedAt = entity.deletedAt
+                deletedAt = entity.deletedAt?.ifBlank { null }
             )
         }
     }

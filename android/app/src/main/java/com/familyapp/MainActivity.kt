@@ -42,6 +42,7 @@ import com.familyapp.ui.calendar.CalendarScreen
 import com.familyapp.ui.calendar.CalendarViewModel
 import com.familyapp.ui.components.ModalImeBackHandler
 import com.familyapp.ui.components.SyncBadge
+import com.familyapp.ui.components.SyncErrorDialog
 import com.familyapp.ui.finance.FinanceScreen
 import com.familyapp.ui.finance.FinanceViewModel
 import com.familyapp.ui.navigation.FamilyFloatingBottomBar
@@ -121,6 +122,7 @@ class MainActivity : ComponentActivity() {
                     // Auto-open settings dialog on first launch if not logged in
                     mutableStateOf(!NetworkClient.isLoggedIn())
                 }
+                var showSyncErrorDialog by remember { mutableStateOf(false) }
                 var authStateVersion by remember { mutableIntStateOf(0) }
 
                 Scaffold(
@@ -133,7 +135,13 @@ class MainActivity : ComponentActivity() {
                             isDark = isDark,
                             hasUpdate = updateState is UpdateUiState.UpdateAvailable,
                             onToggleTheme = { ThemePreferences.toggleLightDark(isDark) },
-                            onSyncClick = { syncManager.scheduleSync() },
+                            onSyncClick = {
+                                if (syncState is SyncUiState.ERROR) {
+                                    showSyncErrorDialog = true
+                                } else {
+                                    syncManager.scheduleSync()
+                                }
+                            },
                             onSettingsClick = { showServerConfigDialog = true }
                         )
                     },
@@ -178,6 +186,14 @@ class MainActivity : ComponentActivity() {
                                 syncManager.restartRealtimeSync()
                                 syncManager.scheduleSync()
                             }
+                        )
+                    }
+
+                    if (showSyncErrorDialog && syncState is SyncUiState.ERROR) {
+                        SyncErrorDialog(
+                            errorState = syncState as SyncUiState.ERROR,
+                            onRetry = { syncManager.scheduleSync() },
+                            onDismiss = { showSyncErrorDialog = false }
                         )
                     }
 

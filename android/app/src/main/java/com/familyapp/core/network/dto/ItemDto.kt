@@ -46,14 +46,14 @@ data class ItemDto(
                 type = entity.type,
                 title = entity.title,
                 isCompleted = entity.isCompleted,
-                completedAt = entity.completedAt,
-                quantity = entity.quantity,
-                category = entity.category,
-                assignedTo = entity.assignedTo,
-                dueDate = entity.dueDate,
+                completedAt = entity.completedAt?.ifBlank { null },
+                quantity = entity.quantity?.ifBlank { null },
+                category = entity.category?.ifBlank { null },
+                assignedTo = entity.assignedTo?.ifBlank { null },
+                dueDate = entity.dueDate?.ifBlank { null },
                 createdAt = entity.createdAt,
                 updatedAt = entity.updatedAt,
-                deletedAt = entity.deletedAt
+                deletedAt = entity.deletedAt?.ifBlank { null }
             )
         }
     }

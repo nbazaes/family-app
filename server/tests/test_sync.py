@@ -117,3 +117,36 @@ async def test_batch_sync_calendar_events(client: AsyncClient, auth_headers: dic
     assert ev_id in data["synced_ids"]
     assert any(e["id"] == ev_id and e["title"] == "Reunión de Padres y Maestros" for e in data["server_events"])
 
+
+@pytest.mark.asyncio
+async def test_batch_sync_tolerant_formats(client: AsyncClient, auth_headers: dict):
+    headers = {"Authorization": auth_headers["Authorization"]}
+    ev_id = str(uuid.uuid4())
+    t1 = datetime.now(timezone.utc)
+
+    # Payload with single digit hour and empty string for deleted_at
+    payload = {
+        "events": [
+            {
+                "id": ev_id,
+                "title": "Cita médica",
+                "description": "",
+                "start_time": "2026-10-20T9:00:00Z",
+                "end_time": "2026-10-20T10:30:00Z",
+                "is_all_day": False,
+                "color_hex": "#1E523A",
+                "created_by": "Nicolas",
+                "created_at": t1.isoformat(),
+                "updated_at": t1.isoformat(),
+                "deleted_at": "",
+            }
+        ],
+        "since": None,
+    }
+
+    res = await client.post("/api/calendar/events/batch-sync", json=payload, headers=headers)
+    assert res.status_code == 200, res.text
+    data = res.json()
+    assert ev_id in data["synced_ids"]
+
+

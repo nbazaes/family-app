@@ -1,6 +1,7 @@
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 from typing import Optional, List
 from datetime import datetime
+from app.schemas.common import empty_str_to_none, parse_tolerant_datetime
 
 
 class AccountBase(BaseModel):
@@ -14,12 +15,22 @@ class AccountCreate(AccountBase):
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
+    @field_validator("created_at", "updated_at", mode="before")
+    @classmethod
+    def parse_optional_dt(cls, v):
+        return parse_tolerant_datetime(v)
+
 
 class AccountUpdate(BaseModel):
     name: Optional[str] = None
     initial_balance: Optional[float] = None
     color_hex: Optional[str] = None
     updated_at: Optional[datetime] = None
+
+    @field_validator("updated_at", mode="before")
+    @classmethod
+    def parse_optional_dt(cls, v):
+        return parse_tolerant_datetime(v)
 
 
 class AccountOut(AccountBase):
@@ -39,21 +50,41 @@ class AccountSyncPayload(AccountBase):
     updated_at: datetime
     deleted_at: Optional[datetime] = None
 
+    @field_validator("created_at", "updated_at", "deleted_at", mode="before")
+    @classmethod
+    def parse_sync_dt(cls, v):
+        return parse_tolerant_datetime(v)
+
 
 class FinanceTransactionBase(BaseModel):
     account_id: str
     amount: float
     category: str
-    description: str
+    description: str = ""
     date: datetime
     type: str = Field(default="EXPENSE", pattern="^(EXPENSE|INCOME)$")
     created_by: str
+
+    @field_validator("date", mode="before")
+    @classmethod
+    def parse_tx_date(cls, v):
+        return parse_tolerant_datetime(v)
+
+    @field_validator("description", mode="before")
+    @classmethod
+    def clean_tx_desc(cls, v):
+        return v or ""
 
 
 class FinanceTransactionCreate(FinanceTransactionBase):
     id: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+
+    @field_validator("created_at", "updated_at", mode="before")
+    @classmethod
+    def parse_optional_dt(cls, v):
+        return parse_tolerant_datetime(v)
 
 
 class FinanceTransactionUpdate(BaseModel):
@@ -64,6 +95,11 @@ class FinanceTransactionUpdate(BaseModel):
     date: Optional[datetime] = None
     type: Optional[str] = Field(default=None, pattern="^(EXPENSE|INCOME)$")
     updated_at: Optional[datetime] = None
+
+    @field_validator("date", "updated_at", mode="before")
+    @classmethod
+    def parse_optional_dt(cls, v):
+        return parse_tolerant_datetime(v)
 
 
 class FinanceTransactionOut(FinanceTransactionBase):
@@ -82,11 +118,21 @@ class FinanceTransactionSyncPayload(FinanceTransactionBase):
     updated_at: datetime
     deleted_at: Optional[datetime] = None
 
+    @field_validator("created_at", "updated_at", "deleted_at", mode="before")
+    @classmethod
+    def parse_sync_dt(cls, v):
+        return parse_tolerant_datetime(v)
+
 
 class BatchSyncFinanceRequest(BaseModel):
     accounts: List[AccountSyncPayload] = []
     transactions: List[FinanceTransactionSyncPayload] = []
     since: Optional[datetime] = None
+
+    @field_validator("since", mode="before")
+    @classmethod
+    def parse_since(cls, v):
+        return parse_tolerant_datetime(v)
 
 
 class BatchSyncFinanceResponse(BaseModel):
@@ -100,3 +146,4 @@ class FinanceSummaryOut(BaseModel):
     general_balance: float
     total_expenses_month: float
     accounts: List[AccountOut]
+

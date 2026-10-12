@@ -29,12 +29,52 @@ class SyncWorker(
         val hasToken = NetworkClient.isLoggedIn()
         val familyId = NetworkClient.currentFamilyId
         val api = NetworkClient.apiService
+        val syncManager = SyncManager.getInstance(applicationContext)
 
         Log.d("SyncWorker", "Executing SyncWorker -> Host: $baseUrl | LoggedIn: $hasToken | Family: $familyId")
 
         if (!hasToken) {
             Log.w("SyncWorker", "Skipping sync: No active session. Please log in or register from the server settings icon.")
             return@withContext Result.success()
+        }
+
+        val failedModules = mutableListOf<String>()
+        var firstErrorDetails: SyncErrorDetails? = null
+
+        fun reportModuleError(moduleName: String, code: Int, errorBody: String?) {
+            failedModules.add(moduleName)
+            if (firstErrorDetails == null) {
+                val (title, solution) = when (code) {
+                    404 -> Pair(
+                        "Módulo no disponible en servidor (404)",
+                        "El servidor no reconoce la ruta de $moduleName. Es necesario actualizar y recompilar el contenedor Docker del servidor backend (100.97.53.61:8001)."
+                    )
+                    422 -> Pair(
+                        "Error de validación o formato (422)",
+                        "El servidor rechazó los datos de $moduleName por formato no válido. Actualiza la aplicación o verifica los campos ingresados."
+                    )
+                    401, 403 -> Pair(
+                        "Sesión expirada ($code)",
+                        "Tu sesión no es válida. Ve a Ajustes (ícono de engranaje) y vuelve a ingresar tu código familiar."
+                    )
+                    in 500..599 -> Pair(
+                        "Error interno del servidor ($code)",
+                        "El backend falló internamente con código $code al sincronizar $moduleName. Revisa los logs de Docker en el servidor."
+                    )
+                    else -> Pair(
+                        "Error de respuesta ($code)",
+                        "El servidor devolvió HTTP $code al sincronizar $moduleName."
+                    )
+                }
+                val cleanMsg = errorBody?.take(180)?.ifBlank { null }
+                    ?: "El servidor respondió con código HTTP $code para $moduleName."
+                firstErrorDetails = SyncErrorDetails(
+                    title = title,
+                    message = cleanMsg,
+                    solution = solution,
+                    failedModule = moduleName
+                )
+            }
         }
 
         try {
@@ -59,9 +99,7 @@ class SyncWorker(
             } else {
                 val errorBody = itemsResponse.errorBody()?.string()
                 Log.e("SyncWorker", "Items sync failed with HTTP ${itemsResponse.code()}: $errorBody")
-                if (itemsResponse.code() == 401) {
-                    return@withContext Result.failure()
-                }
+                reportModuleError("Compras y Tareas", itemsResponse.code(), errorBody)
             }
 
             // 2. Sync Calendar Events - Bidirectional
@@ -85,9 +123,7 @@ class SyncWorker(
             } else {
                 val errorBody = eventsResponse.errorBody()?.string()
                 Log.e("SyncWorker", "Events sync failed with HTTP ${eventsResponse.code()}: $errorBody")
-                if (eventsResponse.code() == 401) {
-                    return@withContext Result.failure()
-                }
+                reportModuleError("Calendario", eventsResponse.code(), errorBody)
             }
 
             // 3. Sync Finance (Accounts & Transactions) - Bidirectional
@@ -123,15 +159,34 @@ class SyncWorker(
             } else {
                 val errorBody = financeResponse.errorBody()?.string()
                 Log.e("SyncWorker", "Finance sync failed with HTTP ${financeResponse.code()}: $errorBody")
-                if (financeResponse.code() == 401) {
-                    return@withContext Result.failure()
-                }
+                reportModuleError("Finanzas", financeResponse.code(), errorBody)
             }
 
-            Log.d("SyncWorker", "Batch sync completed successfully.")
-            Result.success()
+            if (failedModules.isNotEmpty() && firstErrorDetails != null) {
+                Log.w("SyncWorker", "Batch sync encountered errors in: $failedModules")
+                syncManager.recordSyncError(firstErrorDetails!!)
+                Result.failure()
+            } else {
+                Log.d("SyncWorker", "Batch sync completed successfully for all modules.")
+                syncManager.clearSyncError()
+                Result.success()
+            }
         } catch (e: Exception) {
             Log.e("SyncWorker", "Batch sync encountered network error: ${e.message}", e)
+            val isNetwork = e is java.io.IOException
+            val title = if (isNetwork) "Sin conexión con el servidor" else "Error inesperado de sincronización"
+            val solution = if (isNetwork) {
+                "No se pudo conectar a $baseUrl. Comprueba que el servidor esté encendido y que estés conectado a la red local o a Tailscale."
+            } else {
+                "Ocurrió una excepción al sincronizar: ${e.localizedMessage ?: e.message}"
+            }
+            val errorDetails = SyncErrorDetails(
+                title = title,
+                message = e.localizedMessage ?: e.message ?: "Fallo de conexión",
+                solution = solution,
+                failedModule = "Conexión"
+            )
+            syncManager.recordSyncError(errorDetails)
             Result.retry()
         }
     }

@@ -30,15 +30,18 @@ fun SyncBadge(
     onSyncClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val isError = state is SyncUiState.ERROR
     val (dotColor, text) = when (state) {
         SyncUiState.IDLE -> Pair(SyncGreen, "Al día")
         SyncUiState.SYNCING -> Pair(SyncOrange, "Sincronizando...")
         SyncUiState.OFFLINE -> Pair(SyncGrey, "Offline")
+        is SyncUiState.ERROR -> Pair(MaterialTheme.colorScheme.error, "Error de sincronización")
     }
 
     Surface(
         shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+        color = if (isError) MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f)
+                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
         modifier = modifier.clickable { onSyncClick() }
     ) {
         Row(
@@ -55,6 +58,7 @@ fun SyncBadge(
             Text(
                 text = text,
                 style = MaterialTheme.typography.labelSmall,
+                color = if (isError) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSurface,
                 fontSize = 11.sp
             )
         }
