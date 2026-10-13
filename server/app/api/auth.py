@@ -1,7 +1,7 @@
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from app.core.database import get_db
 from app.core.security import hash_password, verify_password, create_access_token
 from app.models.family import Family, User
@@ -16,9 +16,10 @@ router = APIRouter(prefix="/auth", tags=["Auth"])
 async def connect_family(payload: ConnectRequest, db: AsyncSession = Depends(get_db)):
     family = None
     if payload.family_code:
-        # Search by access code or ID
+        code = payload.family_code.strip()
+        # Search by access code (case-insensitive) or exact ID
         stmt = select(Family).where(
-            (Family.access_code == payload.family_code.strip()) | (Family.id == payload.family_code.strip())
+            (func.upper(Family.access_code) == code.upper()) | (Family.id == code)
         )
         res = await db.execute(stmt)
         family = res.scalar_one_or_none()

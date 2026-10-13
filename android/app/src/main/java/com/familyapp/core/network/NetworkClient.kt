@@ -9,9 +9,11 @@ import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.withContext
 
 object NetworkClient {
     private const val PREFS_NAME = "family_app_prefs"
@@ -21,7 +23,9 @@ object NetworkClient {
     private const val KEY_USER_NAME = "user_name"
     private const val KEY_USER_EMAIL = "user_email"
 
-    const val DEFAULT_BASE_URL = "http://10.0.2.2:8000/"
+    const val TAILSCALE_BASE_URL = "http://100.97.53.61:8001/"
+    const val LAN_BASE_URL = "http://192.168.1.3:8001/"
+    const val DEFAULT_BASE_URL = TAILSCALE_BASE_URL
 
     private var prefs: SharedPreferences? = null
 
@@ -175,6 +179,39 @@ object NetworkClient {
             } catch (e: Exception) {
                 Log.e("NetworkClient", "Error building Retrofit with baseUrl: $baseUrl", e)
             }
+        }
+    }
+
+    suspend fun pingHealth(rawUrl: String): Pair<Boolean, String> = withContext(Dispatchers.IO) {
+        val sanitized = sanitizeUrl(rawUrl)
+        val startTime = System.currentTimeMillis()
+        try {
+            val request = okhttp3.Request.Builder()
+                .url("${sanitized}api/health")
+                .get()
+                .build()
+
+            val fastClient = OkHttpClient.Builder()
+                .connectTimeout(4, TimeUnit.SECONDS)
+                .readTimeout(4, TimeUnit.SECONDS)
+                .build()
+
+            fastClient.newCall(request).execute().use { response ->
+                val latency = System.currentTimeMillis() - startTime
+                if (response.isSuccessful) {
+                    Pair(true, "✓ Conectado exitosamente (${latency} ms)")
+                } else {
+                    Pair(false, "El servidor respondió con código HTTP ${response.code}")
+                }
+            }
+        } catch (e: Exception) {
+            val latency = System.currentTimeMillis() - startTime
+            val msg = when {
+                e is java.net.ConnectException -> "No se pudo conectar a $sanitized (${latency} ms). Comprueba que el servidor o Tailscale estén activos."
+                e is java.net.SocketTimeoutException -> "Tiempo de espera agotado al conectar a $sanitized."
+                else -> "Error de conexión: ${e.localizedMessage ?: e.message}"
+            }
+            Pair(false, msg)
         }
     }
 }

@@ -7,13 +7,17 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.NewReleases
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -240,6 +244,10 @@ fun ServerConfigDialog(
     var statusMessage by remember { mutableStateOf<String?>(null) }
     var isError by remember { mutableStateOf(false) }
 
+    var isTestingPing by remember { mutableStateOf(false) }
+    var pingStatus by remember { mutableStateOf<Pair<Boolean, String>?>(null) }
+    val scrollState = rememberScrollState()
+
     val isLoggedIn = NetworkClient.isLoggedIn()
 
     AlertDialog(
@@ -270,7 +278,9 @@ fun ServerConfigDialog(
         text = {
             ModalImeBackHandler(onDismiss = onDismiss)
             Column(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(scrollState),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 // 1. Server URL field
@@ -279,12 +289,88 @@ fun ServerConfigDialog(
                     onValueChange = {
                         urlText = it
                         NetworkClient.updateBaseUrl(it)
+                        pingStatus = null
                     },
                     label = { Text("URL del Servidor") },
-                    placeholder = { Text("http://192.168.1.100:8000/") },
+                    placeholder = { Text(NetworkClient.TAILSCALE_BASE_URL) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
+
+                // Quick presets and test button
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    FilterChip(
+                        selected = urlText.trim().trimEnd('/') == NetworkClient.TAILSCALE_BASE_URL.trimEnd('/'),
+                        onClick = {
+                            urlText = NetworkClient.TAILSCALE_BASE_URL
+                            NetworkClient.updateBaseUrl(NetworkClient.TAILSCALE_BASE_URL)
+                            pingStatus = null
+                        },
+                        label = { Text("Tailscale", fontSize = 11.sp) }
+                    )
+                    FilterChip(
+                        selected = urlText.trim().trimEnd('/') == NetworkClient.LAN_BASE_URL.trimEnd('/'),
+                        onClick = {
+                            urlText = NetworkClient.LAN_BASE_URL
+                            NetworkClient.updateBaseUrl(NetworkClient.LAN_BASE_URL)
+                            pingStatus = null
+                        },
+                        label = { Text("Wi-Fi Local", fontSize = 11.sp) }
+                    )
+                    Spacer(modifier = Modifier.weight(1f))
+                    TextButton(
+                        onClick = {
+                            isTestingPing = true
+                            pingStatus = null
+                            coroutineScope.launch {
+                                val result = NetworkClient.pingHealth(urlText)
+                                pingStatus = result
+                                isTestingPing = false
+                            }
+                        },
+                        enabled = !isTestingPing && urlText.isNotBlank()
+                    ) {
+                        if (isTestingPing) {
+                            CircularProgressIndicator(modifier = Modifier.size(12.dp), strokeWidth = 2.dp)
+                            Spacer(modifier = Modifier.width(4.dp))
+                        }
+                        Text("Probar", fontSize = 11.sp)
+                    }
+                }
+
+                if (pingStatus != null) {
+                    val (isOk, pingMsg) = pingStatus!!
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (isOk) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+                                else MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = if (isOk) Icons.Default.CheckCircle else Icons.Default.Warning,
+                                contentDescription = null,
+                                tint = if (isOk) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = pingMsg,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (isOk) MaterialTheme.colorScheme.onPrimaryContainer
+                                        else MaterialTheme.colorScheme.onErrorContainer,
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+                }
 
                 if (isLoggedIn) {
                     // Logged in state
@@ -358,7 +444,7 @@ fun ServerConfigDialog(
                             value = familyCode,
                             onValueChange = { familyCode = it },
                             label = { Text("Código de Familia (opcional)") },
-                            placeholder = { Text("Dejar vacío para familia default") },
+                            placeholder = { Text("FAMILIA") },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth()
                         )
@@ -373,7 +459,7 @@ fun ServerConfigDialog(
                                         NetworkClient.updateBaseUrl(urlText)
                                         val req = com.familyapp.core.network.dto.ConnectRequestDto(
                                             memberName = memberName.trim().ifBlank { "Familiar" },
-                                            familyCode = familyCode.trim().ifBlank { null }
+                                            familyCode = familyCode.trim().uppercase().ifBlank { null }
                                         )
                                         val resp = withContext(Dispatchers.IO) {
                                             NetworkClient.apiService.connectFamily(req)
@@ -408,6 +494,33 @@ fun ServerConfigDialog(
                                 CircularProgressIndicator(modifier = Modifier.size(16.dp), color = MaterialTheme.colorScheme.onPrimary)
                             } else {
                                 Text("Conectar y Sincronizar")
+                            }
+                        }
+
+                        if (statusMessage != null) {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (isError) MaterialTheme.colorScheme.errorContainer
+                                        else MaterialTheme.colorScheme.primaryContainer,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(10.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = if (isError) Icons.Default.Warning else Icons.Default.CheckCircle,
+                                        contentDescription = null,
+                                        tint = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = statusMessage!!,
+                                        color = if (isError) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onPrimaryContainer,
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                }
                             }
                         }
 
@@ -619,14 +732,6 @@ fun ServerConfigDialog(
                             color = MaterialTheme.colorScheme.error
                         )
                     }
-                }
-
-                if (statusMessage != null) {
-                    Text(
-                        text = statusMessage!!,
-                        color = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
-                        style = MaterialTheme.typography.bodySmall
-                    )
                 }
             }
         },
