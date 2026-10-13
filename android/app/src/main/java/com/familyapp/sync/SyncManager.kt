@@ -2,9 +2,7 @@ package com.familyapp.sync
 
 import android.content.Context
 import android.util.Log
-import androidx.work.Constraints
 import androidx.work.ExistingWorkPolicy
-import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
@@ -12,11 +10,15 @@ import com.familyapp.core.database.FamilyDatabase
 import com.familyapp.core.database.entity.SyncStatus
 import com.familyapp.core.network.NetworkClient
 import com.familyapp.core.network.dto.AccountDto
+import com.familyapp.core.network.dto.BatchSyncEventsRequestDto
+import com.familyapp.core.network.dto.BatchSyncFinanceRequestDto
+import com.familyapp.core.network.dto.BatchSyncItemsRequestDto
 import com.familyapp.core.network.dto.CalendarEventDto
 import com.familyapp.core.network.dto.FinanceTransactionDto
 import com.familyapp.core.network.dto.ItemDto
 import com.familyapp.core.network.sse.SseClient
 import com.google.gson.Gson
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -25,6 +27,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 
 sealed class SyncUiState {
     object IDLE : SyncUiState()
@@ -53,6 +58,7 @@ class SyncManager(private val context: Context) {
     private val db = FamilyDatabase.getInstance(context)
     private val gson = Gson()
     private val coroutineScope = CoroutineScope(Dispatchers.IO + Job())
+    private val syncMutex = Mutex()
 
     private val _syncUiState = MutableStateFlow<SyncUiState>(SyncUiState.IDLE)
     val syncUiState: StateFlow<SyncUiState> = _syncUiState.asStateFlow()
@@ -63,16 +69,31 @@ class SyncManager(private val context: Context) {
     private var sseJob: Job? = null
 
     init {
-        // Observe WorkManager batch sync status to reflect real syncing progress in the UI
+        // Observe WorkManager batch sync status to reflect background progress in the UI
         coroutineScope.launch {
             workManager.getWorkInfosForUniqueWorkFlow("FamilyBatchSync")
                 .collect { workInfos ->
                     val activeWork = workInfos.firstOrNull()
                     if (activeWork != null) {
                         when (activeWork.state) {
-                            WorkInfo.State.RUNNING, WorkInfo.State.ENQUEUED -> {
-                                Log.d("SyncManager", "Batch sync is RUNNING/ENQUEUED")
-                                _syncUiState.value = SyncUiState.SYNCING
+                            WorkInfo.State.RUNNING -> {
+                                if (_currentError.value == null) {
+                                    Log.d("SyncManager", "WorkManager is RUNNING -> SYNCING")
+                                    _syncUiState.value = SyncUiState.SYNCING
+                                }
+                            }
+                            WorkInfo.State.ENQUEUED -> {
+                                // Do NOT overwrite ERROR state or lock into SYNCING while waiting in queue
+                                val err = _currentError.value
+                                if (err != null) {
+                                    _syncUiState.value = SyncUiState.ERROR(
+                                        title = err.title,
+                                        message = err.message,
+                                        solution = err.solution,
+                                        failedModule = err.failedModule,
+                                        timestamp = err.timestamp
+                                    )
+                                }
                             }
                             WorkInfo.State.SUCCEEDED -> {
                                 val err = _currentError.value
@@ -155,18 +176,199 @@ class SyncManager(private val context: Context) {
         _syncUiState.value = SyncUiState.IDLE
     }
 
-    fun scheduleSync() {
-        val constraints = Constraints.Builder()
-            .setRequiredNetworkType(NetworkType.CONNECTED)
-            .build()
+    /**
+     * Executes bidirectional sync immediately for all modules.
+     * Guarded by a Mutex to avoid parallel overlapping runs.
+     * Returns true if all modules succeeded, false if any module failed or a network error occurred.
+     */
+    suspend fun performSync(): Boolean = withContext(Dispatchers.IO) {
+        val baseUrl = NetworkClient.baseUrl
+        val hasToken = NetworkClient.isLoggedIn()
+        val familyId = NetworkClient.currentFamilyId
+        val api = NetworkClient.apiService
 
+        if (!hasToken) {
+            Log.d("SyncManager", "Skipping sync: No active session")
+            return@withContext true
+        }
+
+        syncMutex.withLock {
+            Log.d("SyncManager", "Starting performSync() -> Host: $baseUrl | Family: $familyId")
+            _syncUiState.value = SyncUiState.SYNCING
+
+            val failedModules = mutableListOf<String>()
+            var firstErrorDetails: SyncErrorDetails? = null
+
+            fun reportModuleError(moduleName: String, code: Int, errorBody: String?) {
+                failedModules.add(moduleName)
+                if (firstErrorDetails == null) {
+                    val (title, solution) = when (code) {
+                        404 -> Pair(
+                            "Módulo no disponible en servidor (404)",
+                            "El servidor no reconoce la ruta de $moduleName. Es necesario actualizar y recompilar el contenedor Docker del servidor backend (100.97.53.61:8001)."
+                        )
+                        422 -> Pair(
+                            "Error de validación o formato (422)",
+                            "El servidor rechazó los datos de $moduleName por formato no válido. Actualiza la aplicación o verifica los campos ingresados."
+                        )
+                        401, 403 -> Pair(
+                            "Sesión expirada ($code)",
+                            "Tu sesión no es válida. Ve a Ajustes (ícono de engranaje) y vuelve a ingresar tu código familiar."
+                        )
+                        in 500..599 -> Pair(
+                            "Error interno del servidor ($code)",
+                            "El backend falló internamente con código $code al sincronizar $moduleName. Revisa los logs de Docker en el servidor."
+                        )
+                        else -> Pair(
+                            "Error de respuesta ($code)",
+                            "El servidor devolvió HTTP $code al sincronizar $moduleName."
+                        )
+                    }
+                    val cleanMsg = errorBody?.take(180)?.ifBlank { null }
+                        ?: "El servidor respondió con código HTTP $code para $moduleName."
+                    firstErrorDetails = SyncErrorDetails(
+                        title = title,
+                        message = cleanMsg,
+                        solution = solution,
+                        failedModule = moduleName
+                    )
+                }
+            }
+
+            try {
+                // 1. Sync Items (Shopping & Tasks) - Bidirectional
+                val pendingItems = db.itemDao().getPendingSyncItems()
+                val itemDtos = pendingItems.map { ItemDto.fromEntity(it) }
+                val itemsRequest = BatchSyncItemsRequestDto(items = itemDtos)
+                val itemsResponse = api.batchSyncItems(itemsRequest)
+
+                if (itemsResponse.isSuccessful && itemsResponse.body() != null) {
+                    val body = itemsResponse.body()!!
+                    if (body.syncedIds.isNotEmpty()) {
+                        db.itemDao().updateSyncStatus(body.syncedIds, SyncStatus.SYNCED)
+                    }
+                    if (body.serverItems.isNotEmpty()) {
+                        val serverEntities = body.serverItems.map { it.toEntity(familyId, SyncStatus.SYNCED) }
+                        db.itemDao().upsertAll(serverEntities)
+                    }
+                } else {
+                    val errorBody = itemsResponse.errorBody()?.string()
+                    Log.e("SyncManager", "Items sync failed with HTTP ${itemsResponse.code()}: $errorBody")
+                    reportModuleError("Compras y Tareas", itemsResponse.code(), errorBody)
+                }
+
+                // 2. Sync Calendar Events - Bidirectional
+                val pendingEvents = db.calendarEventDao().getPendingSyncEvents()
+                val eventDtos = pendingEvents.map { CalendarEventDto.fromEntity(it) }
+                val eventsRequest = BatchSyncEventsRequestDto(events = eventDtos)
+                val eventsResponse = api.batchSyncEvents(eventsRequest)
+
+                if (eventsResponse.isSuccessful && eventsResponse.body() != null) {
+                    val body = eventsResponse.body()!!
+                    if (body.syncedIds.isNotEmpty()) {
+                        db.calendarEventDao().updateSyncStatus(body.syncedIds, SyncStatus.SYNCED)
+                    }
+                    if (body.serverEvents.isNotEmpty()) {
+                        val serverEntities = body.serverEvents.map { it.toEntity(familyId, SyncStatus.SYNCED) }
+                        db.calendarEventDao().upsertAll(serverEntities)
+                    }
+                } else {
+                    val errorBody = eventsResponse.errorBody()?.string()
+                    Log.e("SyncManager", "Events sync failed with HTTP ${eventsResponse.code()}: $errorBody")
+                    reportModuleError("Calendario", eventsResponse.code(), errorBody)
+                }
+
+                // 3. Sync Finance (Accounts & Transactions) - Bidirectional
+                val pendingAccounts = db.accountDao().getPendingSyncAccounts()
+                val accountDtos = pendingAccounts.map { AccountDto.fromEntity(it) }
+                val pendingTxs = db.financeTransactionDao().getPendingSyncTransactions()
+                val txDtos = pendingTxs.map { FinanceTransactionDto.fromEntity(it) }
+
+                val financeRequest = BatchSyncFinanceRequestDto(
+                    accounts = accountDtos,
+                    transactions = txDtos
+                )
+                val financeResponse = api.batchSyncFinance(financeRequest)
+
+                if (financeResponse.isSuccessful && financeResponse.body() != null) {
+                    val body = financeResponse.body()!!
+                    if (body.syncedAccountIds.isNotEmpty()) {
+                        db.accountDao().updateSyncStatus(body.syncedAccountIds, SyncStatus.SYNCED)
+                    }
+                    if (body.serverAccounts.isNotEmpty()) {
+                        val serverAccEntities = body.serverAccounts.map { it.toEntity(familyId, SyncStatus.SYNCED) }
+                        db.accountDao().upsertAll(serverAccEntities)
+                    }
+                    if (body.syncedTransactionIds.isNotEmpty()) {
+                        db.financeTransactionDao().updateSyncStatus(body.syncedTransactionIds, SyncStatus.SYNCED)
+                    }
+                    if (body.serverTransactions.isNotEmpty()) {
+                        val serverTxEntities = body.serverTransactions.map { it.toEntity(familyId, SyncStatus.SYNCED) }
+                        db.financeTransactionDao().upsertAll(serverTxEntities)
+                    }
+                } else {
+                    val errorBody = financeResponse.errorBody()?.string()
+                    Log.e("SyncManager", "Finance sync failed with HTTP ${financeResponse.code()}: $errorBody")
+                    reportModuleError("Finanzas", financeResponse.code(), errorBody)
+                }
+
+                if (failedModules.isNotEmpty() && firstErrorDetails != null) {
+                    Log.w("SyncManager", "Batch sync finished with errors in: $failedModules")
+                    recordSyncError(firstErrorDetails!!)
+                    return@withContext false
+                } else {
+                    Log.d("SyncManager", "Batch sync completed successfully for all modules.")
+                    clearSyncError()
+                    return@withContext true
+                }
+            } catch (e: CancellationException) {
+                Log.d("SyncManager", "performSync() was cancelled")
+                throw e
+            } catch (e: Exception) {
+                Log.e("SyncManager", "Batch sync network/unexpected error: ${e.message}", e)
+                val isNetwork = e is java.io.IOException
+                val title = if (isNetwork) "Sin conexión con el servidor" else "Error inesperado de sincronización"
+                val solution = if (isNetwork) {
+                    "No se pudo conectar a $baseUrl. Comprueba que el servidor esté encendido y que estés conectado a la red local o a Tailscale."
+                } else {
+                    "Ocurrió una excepción al sincronizar: ${e.localizedMessage ?: e.message}"
+                }
+                val errorDetails = SyncErrorDetails(
+                    title = title,
+                    message = e.localizedMessage ?: e.message ?: "Fallo de conexión",
+                    solution = solution,
+                    failedModule = "Conexión"
+                )
+                recordSyncError(errorDetails)
+                return@withContext false
+            }
+        }
+    }
+
+    /**
+     * Schedules synchronization:
+     * 1. Launches an immediate in-process sync for instantaneous UI responsiveness.
+     * 2. Enqueues a WorkManager request with KEEP policy as background guarantee without network constraints that block private VPNs.
+     */
+    fun scheduleSync() {
+        // Immediate in-process sync
+        coroutineScope.launch {
+            try {
+                performSync()
+            } catch (e: CancellationException) {
+                // Ignore normal cancellation
+            } catch (e: Exception) {
+                Log.e("SyncManager", "Immediate sync launch error: ${e.message}")
+            }
+        }
+
+        // Background WorkManager request as offline/background fallback
         val syncRequest = OneTimeWorkRequestBuilder<SyncWorker>()
-            .setConstraints(constraints)
             .build()
 
         workManager.enqueueUniqueWork(
             "FamilyBatchSync",
-            ExistingWorkPolicy.REPLACE,
+            ExistingWorkPolicy.KEEP,
             syncRequest
         )
     }
